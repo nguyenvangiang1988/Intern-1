@@ -1,0 +1,5 @@
+
+
+#define STRING_LENGTH 300
+#define STRING_WORDS_NUMBER 30
+#define WORD_LENGTH 10
