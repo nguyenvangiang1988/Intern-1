@@ -38,7 +38,7 @@ int main(){
 		Print("string = ");
 		gets(s);
 		gets(s);
-		printf("WordSwap(\"%s\") = \"%s\"", s, WordSwap2(s));
+		printf("WordSwap(\"%s\") = \"%s\"\n", s, WordSwap2(s));
 	}
 
 	if(probid==3){
@@ -54,6 +54,7 @@ int main(){
 
 		Print("Result: ");
 		findAbsence(ids, n);
+		PrintLine("");
 	}
 
 	if(probid>3 || probid<1){
