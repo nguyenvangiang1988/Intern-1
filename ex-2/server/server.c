@@ -33,7 +33,7 @@ int main(){
     int rbytes;
     enum DATA_TYPE type;
 
-    if(skid == -1){
+    if (skid == -1){
         perror("Error initialize server socket");
     }
 
@@ -43,7 +43,7 @@ int main(){
         htonl(INADDR_ANY)
     };
 
-    if(bind(skid, (struct sockaddr*)&addrport, sizeof addrport) == -1){
+    if (bind(skid, (struct sockaddr*)&addrport, sizeof addrport) == -1){
         perror("Bind address to socket failed");
         return 0x0;
     }else{
@@ -60,20 +60,18 @@ int main(){
 
     cskid = accept(skid, 0, 0);
 
-    if(cskid != -1){
+    if (cskid != -1){
         printf("OK client connected!\n");
 
-        while((rbytes = recv(cskid, &type, sizeof type, 0)) > 0){
-            if(rbytes == sizeof type){
-                printf("type %d\n", type);
-
+        while ((rbytes = recv(cskid, &type, sizeof type, 0)) > 0){
+            if (rbytes == sizeof type){
                 switch(type){
                     case STRING:
-                        rbytes = recv(skid, buff, BSIZE, 0);
+                        rbytes = recv(cskid, buff, BSIZE, 0);
                         if(rbytes > 0){
-                            char* s = (char*)malloc(rbytes);
+                            char* s = (char*)malloc(rbytes + 1);
                             strncpy(s, buff, rbytes);
-                            printf("Received string: %s", s);
+                            printf("Received string: %s\n", s);
                             free(s);
                         }else{
                             printf("Closing socket...\n");
@@ -83,9 +81,9 @@ int main(){
                         }
                         break;
                     case NUMBER:
-                        rbytes = recv(skid, &number, sizeof number, 0);
+                        rbytes = recv(cskid, &number, sizeof number, 0);
                         if(rbytes == sizeof number){
-                            printf("Received integer number: %d", number);
+                            printf("Received integer number: %d\n", number);
                         }else{
                             printf("Closing socket...\n");
                             close(cskid);
@@ -94,9 +92,9 @@ int main(){
                         }
                         break;
                     case STUDENT_INFO:
-                        rbytes = recv(skid, &student, sizeof student, 0);
+                        rbytes = recv(cskid, &student, sizeof student, 0);
                         if(rbytes == sizeof student){
-                            printf("Receive Student Structure:\nID: %s\nName: %s\nBirthday: %u/%u/%u\n", student.id, student.name, student.birthday.day, student.birthday.month, student.birthday.year);
+                            printf("Received Student Structure:\nID: %s\nName: %s\nBirthday: %u/%u/%u\n", student.id, student.name, student.birthday.day, student.birthday.month, student.birthday.year);
                         }else{
                             printf("Closing socket...\n");
                             close(cskid);
@@ -105,7 +103,6 @@ int main(){
                         }
                         break;
                     default:
-                        printf("Default");
                         printf("Out of type! Closing socket...\n");
                         close(cskid);
                         close(skid);
@@ -122,13 +119,9 @@ int main(){
     }
 
 
-    printf("Closing...\n");
+    printf("Closing socket...\n");
 
-    int result = close(skid);
-
-    if(result){
-        perror("ERROR CLOSE SOCKET");
-    }
+    close(skid);
 
     return 0x0;
 }
