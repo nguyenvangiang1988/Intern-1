@@ -44,7 +44,7 @@ all: inter_1
 inter_1: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C++ Linker'
-	cc -pthread server.c -o "inter_1" $(OBJS) $(USER_OBJS) $(LIBS)
+	gcc server.c -o "server" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
