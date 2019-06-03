@@ -86,7 +86,6 @@ int main(){
             if(sizeFD < client[i])
                 sizeFD=client[i];
         }
-        printf("%d \n",sizeFD);
         select(sizeFD+1, &listSocket, NULL, NULL, NULL);
 
         if(FD_ISSET(valueOfSocket, &listSocket)){
@@ -107,17 +106,17 @@ int main(){
             }
         }
 
-        for(i=0; i<sizeMaxClient; i++){
+        for(i=0; i<sizeMaxClient; i++)
             if(FD_ISSET(client[i],&listSocket)){
                 memset(&string, '\0', sizeof(string));
                 recv(client[i], string, sizeof(string), 0);
                 puts(string);
                 printf("socket=%d\n",client[i]);
-                if(strcmp(string, "EXIT")==0)
+                if(strcmp(string, "EXIT")==0){
                     client[i]=0;
-
+                    close(client[i]);
+                }
             }
-        }
     }
 
     valueOfShutdown=shutdown(valueOfSocket, SHUT_RDWR);
