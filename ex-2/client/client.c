@@ -12,8 +12,8 @@ void CleanStdInput(){
 }
 
 void GetStringFromStdInput(char* s, unsigned int length){
-	fgets(s, length, stdin);
-	*(s + strlen(s) - 1) = 0;
+    fgets(s, length, stdin);
+    *(s + strlen(s) - 1) = 0;
 }
 
 enum DATA_TYPE{
@@ -38,23 +38,24 @@ int main(){
     int cskid = socket(AF_INET, SOCK_STREAM, 0);
     int sbytes;
     struct Student student;
-
+    int err_indicate = 0;
     int number;
 
     if (cskid == -1){
         perror("Create client socket failed");
-        return 0x0;
+        return 0;
     }
 
     struct sockaddr_in serveraddr = {
-            AF_INET,
-            htons(PORT),
-            htonl(0x7f000001)
+        AF_INET,
+        htons(PORT),
+        htonl(0x7f000001)
     };
 
     if (connect(cskid, (struct sockaddr*)&serveraddr, sizeof serveraddr) == -1){
         perror("Connect to server failed");
-    }else{
+    }
+    else{
         printf("Connect to server success!\n");
         while (!stop){
             printf("Type to send (%d. Integer Number, %d. String, %d. Student Info): ", NUMBER, STRING, STUDENT_INFO);
@@ -62,53 +63,62 @@ int main(){
             scanf("%d", &type);
 
             switch (type){
-				case NUMBER:
-					sbytes = send(cskid, &type, sizeof type, 0);
-					printf("Integer Number: ");
-					scanf("%d", &number);
-					sbytes = send(cskid, &number, sizeof number, 0);
-					if(sbytes != sizeof number){
-						perror("Send error");
-						printf("Closing socket...\n");
-						close(cskid);
-						return 0x0;
-					}
-					printf("Sent integer number %d bytes\n", sbytes);
-					break;
-				case STRING:
-					sbytes = send(cskid, &type, sizeof type, 0);
-					printf("String: ");
-					CleanStdInput();
-					GetStringFromStdInput(buff, BSIZE);
-					sbytes = send(cskid, buff, strlen(buff), 0);
-					if(strlen(buff) != sbytes){
-						perror("Send error");
-						printf("Closing socket...\n");
-						close(cskid);
-						return 0x0;
-					}
-					printf("Sent string\n");
-					break;
-				case STUDENT_INFO:
-					sbytes = send(cskid, &type, sizeof type, 0);
-					printf("Student ID: ");
-					CleanStdInput();
-					GetStringFromStdInput(student.id, sizeof(student.id) / sizeof(char));
-					printf("Student name: ");
-					GetStringFromStdInput(student.name, sizeof(student.name) / sizeof(char));
-					printf("Day of birthday: ");
-					scanf("%u", &student.birthday.day);
-					printf("Month of birthday: ");
-					scanf("%u", &student.birthday.month);
-					printf("Year of birthday: ");
-					scanf("%u", &student.birthday.year);
-					sbytes = send(cskid, &student, sizeof student, 0);
-					break;
-				default:
-					printf("Unknown type. Closing socket...\n");
-					close(cskid);
-					return 0x0;
-					break;
+                case NUMBER:
+                    sbytes = send(cskid, &type, sizeof type, 0);
+                    printf("Integer Number: ");
+                    scanf("%d", &number);
+                    sbytes = send(cskid, &number, sizeof number, 0);
+                    if (sbytes != sizeof number){
+                        err_indicate = 1;
+                    }
+                    else{
+                        printf("Sent integer number\n");
+                    }
+                    break;
+                case STRING:
+                    sbytes = send(cskid, &type, sizeof type, 0);
+                    printf("String: ");
+                    CleanStdInput();
+                    GetStringFromStdInput(buff, BSIZE);
+                    sbytes = send(cskid, buff, strlen(buff), 0);
+                    if (strlen(buff) != sbytes){
+                        err_indicate = 1;
+                    }
+                    else{
+                        printf("Sent string\n");
+                    }
+                    break;
+                case STUDENT_INFO:
+                    sbytes = send(cskid, &type, sizeof type, 0);
+                    printf("Student ID: ");
+                    CleanStdInput();
+                    GetStringFromStdInput(student.id, sizeof(student.id) / sizeof(char));
+                    printf("Student name: ");
+                    GetStringFromStdInput(student.name, sizeof(student.name) / sizeof(char));
+                    printf("Day of birthday: ");
+                    scanf("%u", &student.birthday.day);
+                    printf("Month of birthday: ");
+                    scanf("%u", &student.birthday.month);
+                    printf("Year of birthday: ");
+                    scanf("%u", &student.birthday.year);
+                    sbytes = send(cskid, &student, sizeof student, 0);
+                    if (sbytes != sizeof student){
+                        err_indicate = 1;
+                    }
+                    else{
+                        printf("Sent student info\n");
+                    }
+                    break;
+                default:
+                    printf("Unknown type. Closing socket...\n");
+                    err_indicate = 1;
+                    break;
+            }
+
+            if (err_indicate){
+                perror("Send error");
+                printf("Closing socket...\n");
+                break;
             }
 
             printf("Do you want to stop (0: Continue, 1: Stop): ");
@@ -116,8 +126,7 @@ int main(){
         }
     }
 
-    printf("Closing socket...\n");
     close(cskid);
 
-    return 0x0;
+    return 0;
 }

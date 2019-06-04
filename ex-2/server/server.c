@@ -25,16 +25,19 @@ struct Student{
 };
 
 int main(){
-    int skid = socket(AF_INET, SOCK_STREAM, 0);
     int cskid;
     int number;
     struct Student student;
     char buff[BSIZE];
     int rbytes;
     enum DATA_TYPE type;
+    int err_indicate = 0;
+
+    int skid = socket(AF_INET, SOCK_STREAM, 0);
 
     if (skid == -1){
         perror("Error initialize server socket");
+        return 0;
     }
 
     struct sockaddr_in addrport = {
@@ -45,16 +48,19 @@ int main(){
 
     if (bind(skid, (struct sockaddr*)&addrport, sizeof addrport) == -1){
         perror("Bind address to socket failed");
-        return 0x0;
-    }else{
+        close(skid);
+        return 0;
+    }
+    else{
         printf("Bind port %d success\n", PORT);
     }
 
-    if(listen(skid, MAXPENDING) == -1){
+    if (listen(skid, MAXPENDING) == -1){
         perror("Listening failed");
         close(skid);
-        return 0x0;
-    }else{
+        return 0;
+    }
+    else{
         printf("OK listening\n");
     }
 
@@ -65,56 +71,57 @@ int main(){
 
         while ((rbytes = recv(cskid, &type, sizeof type, 0)) > 0){
             if (rbytes == sizeof type){
-                switch(type){
+                switch (type){
                     case STRING:
                         rbytes = recv(cskid, buff, BSIZE, 0);
-                        if(rbytes > 0){
+                        if (rbytes > 0){
                             char* s = (char*)malloc(rbytes + 1);
                             strncpy(s, buff, rbytes);
+                            s[rbytes] = 0;
                             printf("Received string: %s\n", s);
                             free(s);
-                        }else{
-                            printf("Closing socket...\n");
-                            close(cskid);
-                            close(skid);
-                            return 0x0;
+                        }
+                        else{
+                            err_indicate = 1;
                         }
                         break;
                     case NUMBER:
                         rbytes = recv(cskid, &number, sizeof number, 0);
-                        if(rbytes == sizeof number){
+                        if (rbytes == sizeof number){
                             printf("Received integer number: %d\n", number);
-                        }else{
-                            printf("Closing socket...\n");
-                            close(cskid);
-                            close(skid);
-                            return 0x0;
+                        }
+                        else{
+                            err_indicate = 1;
                         }
                         break;
                     case STUDENT_INFO:
                         rbytes = recv(cskid, &student, sizeof student, 0);
-                        if(rbytes == sizeof student){
+                        if (rbytes == sizeof student){
                             printf("Received Student Structure:\nID: %s\nName: %s\nBirthday: %u/%u/%u\n", student.id, student.name, student.birthday.day, student.birthday.month, student.birthday.year);
-                        }else{
-                            printf("Closing socket...\n");
-                            close(cskid);
-                            close(skid);
-                            return 0x0;
+                        }
+                        else{
+                            err_indicate = 1;
                         }
                         break;
                     default:
                         printf("Out of type! Closing socket...\n");
-                        close(cskid);
-                        close(skid);
-                        return 0x0;
+                        err_indicate = 1;
                         break;
                 }
-            }else{
+
+                if (err_indicate){
+                    break;
+                }
+            }
+            else{
                 printf("Size of type byte incorrect!\n");
                 break;
             }
         }
-    }else{
+
+        close(cskid);
+    }
+    else{
         perror("accept failed");
     }
 
@@ -123,5 +130,5 @@ int main(){
 
     close(skid);
 
-    return 0x0;
+    return 0;
 }
