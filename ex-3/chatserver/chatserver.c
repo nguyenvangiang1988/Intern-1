@@ -165,93 +165,103 @@ int SendMessageToNickname(char* msg, char* fromnickname, char* nickname){
 
 void* ClientCommunicationThread(void* args){
     client* clientinfo = (client*)args;
+    int clone_socket = clientinfo->c_socket;
+    char clone_c_nickname[NICKNAME_LENGTH], clone_t_nickname[NICKNAME_LENGTH];
+    pthread_t clone_tid;
     int sbytes;
     char* rstr;
     int b_received_nickname = 0;
     char* message;
 
-    rstr = GetLineFromSocket(clientinfo->c_socket);
-    if(rstr == 0) {
+    rstr = GetLineFromSocket(clone_socket);
+
+    //clone thread id, can replace tid by id set manually
+    clone_tid = clientinfo->tid;
+
+    if (rstr == 0) {
         perror("get line from socket failed");
-        printf("delete TID:  %d from Peers array\n", clientinfo->tid);
-        PeersDeleteByTID(clientinfo->tid);
-        printf("closing client socket...");
-        close(clientinfo->c_socket);
+        printf("delete TID: 0x%X from Peers array\n", clone_tid);
+        PeersDeleteByTID(clone_tid);
+        printf("closing client socket...\n");
+        close(clone_socket);
         return 0;
     }
     else {
         strncpy(clientinfo->c_nickname, rstr, NICKNAME_LENGTH);
+        strncpy(clone_c_nickname, rstr, NICKNAME_LENGTH);
         free(rstr);
-        if (strlen(clientinfo->c_nickname) != 0) {
-            printf("Nickname received: %s\n", clientinfo->c_nickname);
+        if (strlen(clone_c_nickname) != 0) {
+            printf("Nickname received: %s\n", clone_c_nickname);
         }
         else {
             printf("Nickname invalid!\n");
-            SendLineToSocket(clientinfo->c_socket, "Nickname invalid!");
+            SendLineToSocket(clone_socket, "Nickname invalid!");
 
             printf("Disconnect this client\n");
-            close(clientinfo->c_socket);
+            close(clone_socket);
 
-            printf("delete TID: %d from Peers array\n", clientinfo->tid);
-            PeersDeleteByTID(clientinfo->tid);
+            printf("delete TID: 0x%X from Peers array\n", clone_tid);
+            PeersDeleteByTID(clone_tid);
 
             return 0;
         }
     }
 
-    rstr = GetLineFromSocket(clientinfo->c_socket);
+    rstr = GetLineFromSocket(clone_socket);
     if (rstr == 0) {
         perror("get line from socket failed");
-        printf("delete TID:  %u from Peers array\n", clientinfo->tid);
-        PeersDeleteByTID(clientinfo->tid);
-        printf("closing client socket...");
-        close(clientinfo->c_socket);
+        printf("delete TID: 0x%X from Peers array\n", clone_tid);
+        PeersDeleteByTID(clone_tid);
+        printf("closing client socket...\n");
+        close(clone_socket);
         return 0;
     }
     else {
         strncpy(clientinfo->t_nickname, rstr, NICKNAME_LENGTH);
+        strncpy(clone_t_nickname, rstr, NICKNAME_LENGTH);
         free(rstr);
-        if (strlen(clientinfo->t_nickname) != 0 && strcmp(clientinfo->c_nickname, clientinfo->t_nickname) && PeersHaveNickname(clientinfo->t_nickname)) {
-            printf("To nickname received: %s\n", clientinfo->t_nickname);
+        if (strlen(clone_t_nickname) != 0 && strcmp(clone_c_nickname, clone_t_nickname) && PeersHaveNickname(clone_t_nickname)) {
+            printf("To nickname received: %s\n", clone_t_nickname);
         }
         else {
-            if (strlen(clientinfo->t_nickname) == 0) {
-                SendLineToSocket(clientinfo->c_socket, "To nickname invalid!");
+            if (strlen(clone_t_nickname) == 0) {
+                SendLineToSocket(clone_socket, "To nickname invalid!");
                 printf("To nickname invalid!\n");
             }
 
-            if (!PeersHaveNickname(clientinfo->t_nickname)) {
-                SendLineToSocket(clientinfo->c_socket, "To nickname not found");
+            if (!PeersHaveNickname(clone_t_nickname)) {
+                SendLineToSocket(clone_socket, "To nickname not found");
                 printf("To nickname not found\n");
             }
 
-            if(strcmp(clientinfo->c_nickname, clientinfo->t_nickname) == 0) {
-                SendLineToSocket(clientinfo->c_socket, "You cannot chat yourself");
+            if (strcmp(clone_c_nickname, clone_t_nickname) == 0) {
+                SendLineToSocket(clone_socket, "You cannot chat yourself");
                 printf("You cannot chat yourself\n");
             }
 
             printf("Disconnect this client\n");
-            close(clientinfo->c_socket);
+            close(clone_socket);
 
-            printf("delete TID: %d from Peers array\n", clientinfo->tid);
-            PeersDeleteByTID(clientinfo->tid);
+            printf("delete TID: 0x%X from Peers array\n", clone_tid);
+            PeersDeleteByTID(clone_tid);
 
             return 0;
         }
     }
 
-    printf("OK this connect can communicate, between %s and %s\n", clientinfo->c_nickname, clientinfo->t_nickname);
+    printf("OK this connect can communicate, between %s and %s\n", clone_c_nickname, clone_t_nickname);
     
-    while(message = GetLineFromSocket(clientinfo->c_socket), message != 0){
-        printf("[%s -> %s]: %s\n", clientinfo->c_nickname, clientinfo->t_nickname, message);
-        SendMessageToNickname(message, clientinfo->c_nickname, clientinfo->t_nickname);
+    while (message = GetLineFromSocket(clone_socket), message != 0) {
+        printf("[%s -> %s]: %s\n", clone_c_nickname, clone_t_nickname, message);
+        SendMessageToNickname(message, clone_c_nickname, clone_t_nickname);
+        free(message);
     }
     
     printf("Disconnect this client\n");
-    close(clientinfo->c_socket);
+    close(clone_socket);
     
-    printf("delete TID: %d from Peers array\n", clientinfo->tid);
-    PeersDeleteByTID(clientinfo->tid);
+    printf("delete TID: %d from Peers array\n", clone_tid);
+    PeersDeleteByTID(clone_tid);
 
     return 0;
 }

@@ -36,5 +36,4 @@ int SendLineToSocket(int socket, char* str){
 
     return result;
 }
-
 #endif

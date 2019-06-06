@@ -15,6 +15,9 @@
 #define SERVER_IP 0x7f000001
 #define SERVER_PORT 21996
 
+//global variables, client_socket for main thread and sub thread
+int client_socket;
+
 int ConnectToServer(unsigned int ip, unsigned short port){
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
@@ -30,6 +33,7 @@ int ConnectToServer(unsigned int ip, unsigned short port){
 
     if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof server_addr) == -1) {
         perror("cannot connect to server");
+        close(client_socket);
         return -1;
     }
 
@@ -43,11 +47,11 @@ void* ClientRecvMessageThread(void* args){
 
     while (message = GetLineFromSocket(client_socket), message != 0) {
         printf("[RECV] %s\n", message);
-        fflush(stdout);
         free(message);
     }
     
     printf("Down client recevice message Thread\n");
+    close(client_socket);
     exit(0);
 }
 
@@ -57,12 +61,13 @@ void CleanStdInputStream(){
 
 int main(int argc, char** args){
     int stop = 0;
+    int sresult;
     char message[MESSAGE_LENGTH];
     char nickname[NICKNAME_LENGTH];
-    int client_socket = ConnectToServer(SERVER_IP, SERVER_PORT);
+    client_socket = ConnectToServer(SERVER_IP, SERVER_PORT);
     pthread_t tid;
 
-    if (client_socket == -1){
+    if (client_socket == -1) {
         perror("create client socket failed");
         return 0;
     }
@@ -70,23 +75,42 @@ int main(int argc, char** args){
     printf("connect to server successfully\n");
 
     //thread to receive message from server
-    pthread_create(&tid, 0, ClientRecvMessageThread, &client_socket);
+    if (pthread_create(&tid, 0, ClientRecvMessageThread, &client_socket)) {
+        printf("cannot create thread to receive message\n");
+        close(client_socket);
+        return 0;
+    }
 
     //thread to send is main thread
     //exchange client nickname to server
     printf("Your nickname: ");
     gets(nickname);
-    SendLineToSocket(client_socket, nickname);
+    sresult = SendLineToSocket(client_socket, nickname);
+    if (sresult == -1) {
+        perror("send nickname failed");
+        close(client_socket);
+        return 0;
+    }
 
     //exchange to nickname to server
     printf("What nickname do you want to chat: ");
     gets(nickname);
-    SendLineToSocket(client_socket, nickname);
+    sresult = SendLineToSocket(client_socket, nickname);
+    if (sresult == -1) {
+        perror("send partner nickname failed");
+        close(client_socket);
+        return 0;
+    }
 
-    while(!stop) {
+    while (!stop) {
         printf("MESSAGE TO SENT TO %s: ", nickname);
         gets(message);
-        SendLineToSocket(client_socket, message);
+        sresult = SendLineToSocket(client_socket, message);
+        if (sresult == -1) {
+            perror("send message to partner failed");
+            close(client_socket);
+            return 0;
+        }
         printf("Stop (1. Stop, 0. Continue): ");
         scanf("%d", &stop);
         CleanStdInputStream();
