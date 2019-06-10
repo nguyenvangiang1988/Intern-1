@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
+#include <sys/select.h>
 
 #include "lib.c"
 
@@ -14,11 +15,12 @@
 #define NICKNAME_LENGTH 32
 
 typedef struct {
-    pthread_t tid;
     //current nickname of node
     char c_nickname[NICKNAME_LENGTH];
+    int bfrom;
     //to nickname of node
     char t_nickname[NICKNAME_LENGTH];
+    int bto;
     //socket to interface with node
     int c_socket;
 } client;
@@ -37,19 +39,6 @@ void PeersFree(){
     for ( ; i < peers.length; i++) {
         close(peers.clients[i].c_socket);
     }
-}
-
-int PeersAdd(char* nickname, int socket){
-    if (peers.length == MAX_CONNECTIONS) {
-        return -1;
-    }
-
-    client p;
-    strncpy(p.c_nickname, nickname, NICKNAME_LENGTH);
-    p.c_socket = socket;
-
-    peers.clients[peers.length++] = p;
-    return 0;
 }
 
 void PeersDeleteByNickname(char* nickname){
@@ -79,20 +68,32 @@ void PeersPrint(){
     }
 }
 
-void PeersDeleteByTID(pthread_t t){
-    int i = 0, j;
-    while (i < peers.length) {
-        if (peers.clients[i].tid == t) {
-            for (j = i; j < peers.length - 1; j++) {
+void PeersDeleteBySocket(int sk){
+    int i, j, end_length;
+    for (i = 0; i < peers.length; i++) {
+        if (peers.clients[i].c_socket == sk) {
+            close(sk);
+            end_length = peers.length - 1;
+            for (j = i; j < end_length; j++) {
                 peers.clients[j] = peers.clients[j + 1];
             }
-
             peers.length--;
-        }
-        else {
-            i++;
+            return;
         }
     }
+}
+
+int PeersAddClient(int sk){
+    if (peers.length >= MAX_CONNECTIONS)
+        return -1;
+
+    int offset = peers.length++;
+    peers.clients[offset].bfrom = peers.clients[offset].bto = 0;
+    peers.clients[offset].c_socket = sk;
+    strncpy(peers.clients[offset].c_nickname, "", NICKNAME_LENGTH);
+    strncpy(peers.clients[offset].t_nickname, "", NICKNAME_LENGTH);
+
+    return 0;
 }
 
 int PeersHaveNickname(char* nickname) {
@@ -107,14 +108,47 @@ int PeersHaveNickname(char* nickname) {
     return 0;
 }
 
-int CreateServerSocket(unsigned int ip, unsigned short port){
-    int server_socket = socket(PF_INET, SOCK_STREAM, 0);
+void PeersAddSocketToFDS(fd_set* fds){
+    int i;
+    for (i = 0; i < peers.length; i++) {
+        FD_SET(peers.clients[i].c_socket, fds);
+    }
+}
 
-    if (server_socket == -1) {
-        perror("create socket failed");
-        return -1;
+int PeersMaxSocketInFDS(int server_socket){
+    int max_fd = server_socket;
+    int i;
+
+    for (i = 0; i < peers.length; i++) {
+        if (max_fd < peers.clients[i].c_socket) {
+            max_fd = peers.clients[i].c_socket;
+        }
     }
 
+    return max_fd;
+}
+
+void PeersSetClientNickname(int sk, char* cnickname){
+    int i = 0;
+    for (; i < peers.length; i++) {
+        if (peers.clients[i].c_socket == sk) {
+            strncpy(peers.clients[i].c_nickname, cnickname, NICKNAME_LENGTH);
+            peers.clients[i].bfrom = 1;
+        }
+    }
+}
+
+void PeersSetToNickname(int sk, char* tnickname){
+    int i = 0;
+    for (; i < peers.length; i++) {
+        if (peers.clients[i].c_socket == sk) {
+            strncpy(peers.clients[i].t_nickname, tnickname, NICKNAME_LENGTH);
+            peers.clients[i].bto = 1;
+        }
+    }
+}
+
+int CreateServerSocket(unsigned int ip, unsigned short port){
     struct sockaddr_in addr = {
         AF_INET,
         htons(port),
@@ -122,6 +156,21 @@ int CreateServerSocket(unsigned int ip, unsigned short port){
             htonl(ip)
         }
     };
+
+    int reuse = 1;
+
+    int server_socket = socket(PF_INET, SOCK_STREAM, 0);
+
+    if (server_socket == -1) {
+        perror("create socket failed");
+        return -1;
+    }
+
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof reuse) == -1) {
+        perror("setsockopt failed");
+        close(server_socket);
+        return -1;
+    }
 
     if (bind(server_socket, (struct sockaddr*)&addr, sizeof addr) == -1) {
         perror("bind failed");
@@ -147,7 +196,7 @@ int SendMessageToNickname(char* msg, char* fromnickname, char* nickname){
     strcat(message, fromnickname);
     strcat(message, ": ");
     strcat(message, msg);
-    
+
     for (i = 0; i < peers.length; i++) {
         if (strcmp(peers.clients[i].c_nickname, nickname) == 0) {
             sbytes = SendLineToSocket(peers.clients[i].c_socket, message);
@@ -157,140 +206,124 @@ int SendMessageToNickname(char* msg, char* fromnickname, char* nickname){
             }
         }
     }
-    
+
     free(message);
 
     return 0;
 }
 
-void* ClientCommunicationThread(void* args){
-    client* clientinfo = (client*)args;
-    int clone_socket = clientinfo->c_socket;
-    char clone_c_nickname[NICKNAME_LENGTH], clone_t_nickname[NICKNAME_LENGTH];
-    pthread_t clone_tid;
-    int sbytes;
-    char* rstr;
-    int b_received_nickname = 0;
-    char* message;
-
-    rstr = GetLineFromSocket(clone_socket);
-
-    //clone thread id, can replace tid by id set manually
-    clone_tid = clientinfo->tid;
-
-    if (rstr == 0) {
-        perror("get line from socket failed");
-        printf("delete TID: 0x%X from Peers array\n", clone_tid);
-        PeersDeleteByTID(clone_tid);
-        printf("closing client socket...\n");
-        close(clone_socket);
-        return 0;
-    }
-    else {
-        strncpy(clientinfo->c_nickname, rstr, NICKNAME_LENGTH);
-        strncpy(clone_c_nickname, rstr, NICKNAME_LENGTH);
-        free(rstr);
-        if (strlen(clone_c_nickname) != 0) {
-            printf("Nickname received: %s\n", clone_c_nickname);
-        }
-        else {
-            printf("Nickname invalid!\n");
-            SendLineToSocket(clone_socket, "Nickname invalid!");
-
-            printf("Disconnect this client\n");
-            close(clone_socket);
-
-            printf("delete TID: 0x%X from Peers array\n", clone_tid);
-            PeersDeleteByTID(clone_tid);
-
-            return 0;
-        }
-    }
-
-    rstr = GetLineFromSocket(clone_socket);
-    if (rstr == 0) {
-        perror("get line from socket failed");
-        printf("delete TID: 0x%X from Peers array\n", clone_tid);
-        PeersDeleteByTID(clone_tid);
-        printf("closing client socket...\n");
-        close(clone_socket);
-        return 0;
-    }
-    else {
-        strncpy(clientinfo->t_nickname, rstr, NICKNAME_LENGTH);
-        strncpy(clone_t_nickname, rstr, NICKNAME_LENGTH);
-        free(rstr);
-        if (strlen(clone_t_nickname) != 0 && strcmp(clone_c_nickname, clone_t_nickname) && PeersHaveNickname(clone_t_nickname)) {
-            printf("To nickname received: %s\n", clone_t_nickname);
-        }
-        else {
-            if (strlen(clone_t_nickname) == 0) {
-                SendLineToSocket(clone_socket, "To nickname invalid!");
-                printf("To nickname invalid!\n");
-            }
-
-            if (!PeersHaveNickname(clone_t_nickname)) {
-                SendLineToSocket(clone_socket, "To nickname not found");
-                printf("To nickname not found\n");
-            }
-
-            if (strcmp(clone_c_nickname, clone_t_nickname) == 0) {
-                SendLineToSocket(clone_socket, "You cannot chat yourself");
-                printf("You cannot chat yourself\n");
-            }
-
-            printf("Disconnect this client\n");
-            close(clone_socket);
-
-            printf("delete TID: 0x%X from Peers array\n", clone_tid);
-            PeersDeleteByTID(clone_tid);
-
-            return 0;
-        }
-    }
-
-    printf("OK this connect can communicate, between %s and %s\n", clone_c_nickname, clone_t_nickname);
-    
-    while (message = GetLineFromSocket(clone_socket), message != 0) {
-        printf("[%s -> %s]: %s\n", clone_c_nickname, clone_t_nickname, message);
-        SendMessageToNickname(message, clone_c_nickname, clone_t_nickname);
-        free(message);
-    }
-    
-    printf("Disconnect this client\n");
-    close(clone_socket);
-    
-    printf("delete TID: %d from Peers array\n", clone_tid);
-    PeersDeleteByTID(clone_tid);
-
-    return 0;
-}
-
 int main(){
-    int server_socket = CreateServerSocket(INADDR_ANY, PORT);
     int client_socket;
-    pthread_t tid;
-    client* clientinfo;
     struct sockaddr_in client_addr;
-    int sizeofsockaddr = sizeof client_addr;
+    int sizeofsockaddr;
+    int running = 1;
+    fd_set readfds;
+    struct timeval timeout;
+    int select_result;
+    //iterator
+    int i;
+    client client_info;
+    char* str;
 
     PeersInitialize();
 
+    int server_socket = CreateServerSocket(INADDR_ANY, PORT);
+
     if (server_socket == -1) {
-        printf("closing...");
+        perror("create socket failed");
+        printf("closing...\n");
         fflush(stdout);
         return 0;
     }
 
-    while (client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &sizeofsockaddr), client_socket != -1) {
-        PeersAdd("", client_socket);
-        pthread_create(&tid, 0, ClientCommunicationThread, peers.clients + peers.length - 1);
-        peers.clients[peers.length - 1].tid = tid;
-        printf("Client IP: %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-        printf("%d connections\n", PeersGetLength());
-    }
+    printf("listening on 0.0.0.0:%d\n", PORT);
 
-    perror("accept failed");
+    while (running) {
+        FD_ZERO(&readfds);
+        FD_SET(server_socket, &readfds);
+        PeersAddSocketToFDS(&readfds);
+        timeout.tv_sec = 5;
+        timeout.tv_usec = 0;
+
+        int max = PeersMaxSocketInFDS(server_socket);
+
+        if (select_result = select(PeersMaxSocketInFDS(server_socket) + 1, &readfds, NULL, NULL, &timeout), select_result < 0) {
+            perror("select failed");
+        }
+        else if (select_result) {
+            //check server socket is ready?
+            if (FD_ISSET(server_socket, &readfds)) {
+                printf("server is accepting...\n");
+                sizeofsockaddr = sizeof client_addr;
+                client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &sizeofsockaddr);
+                if (client_socket == -1) {
+                    perror("accept failed");
+                }
+                else {
+                    printf("server accepted client %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+                    PeersAddClient(client_socket);
+                }
+            }
+
+            //check all client_socket is ready?
+            for (i = 0; i < peers.length; i++) {
+                if (FD_ISSET(peers.clients[i].c_socket, &readfds)) {
+                    client_info = peers.clients[i];
+                    if (client_info.bfrom && client_info.bto) {
+                        //exchange message
+                        str = GetLineFromSocket(client_info.c_socket);
+                        if (str == NULL) {
+                            printf("disconnect to client %d\n", client_info.c_socket);
+                            PeersDeleteBySocket(client_info.c_socket);
+                        }
+                        else {
+                            SendMessageToNickname(str, client_info.c_nickname, client_info.t_nickname);
+                            printf("[%s => %s]: %s\n", client_info.c_nickname, client_info.t_nickname, str);
+                            free(str);
+                        }
+                    }
+                    else if (!client_info.bfrom) {
+                        //exchange client nickname
+                        str = GetLineFromSocket(client_info.c_socket);
+                        if (str == NULL) {
+                            printf("disconnect to client %d\n", client_info.c_socket);
+                            PeersDeleteBySocket(client_info.c_socket);
+                        }
+                        else {
+                            if (strlen(str) == 0) {
+                                printf("Empty nickname is invalid, disconnect...\n");
+                                PeersDeleteBySocket(client_info.c_socket);
+                            }
+                            else {
+                                printf("[Nickname] OK %s\n", str);
+                                PeersSetClientNickname(client_info.c_socket, str);
+                            }
+                            free(str);
+                        }
+                    }
+                    else if (!client_info.bto) {
+                        //exchange to nickname
+                        str = GetLineFromSocket(client_info.c_socket);
+                        if (str == NULL) {
+                            printf("disconnect to client %d\n", client_info.c_socket);
+                            PeersDeleteBySocket(client_info.c_socket);
+                        }
+                        else {
+                            if (strlen(str) == 0) {
+                                printf("Empty to nickname is invalid, disconnect...\n");
+                                PeersDeleteBySocket(client_info.c_socket);
+                            }
+                            else {
+                                printf("[To Nickname] OK %s\n", str);
+                                PeersSetToNickname(client_info.c_socket, str);
+                            }
+                            free(str);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     printf("closing...");
     PeersFree();

@@ -49,7 +49,7 @@ void* ClientRecvMessageThread(void* args){
         printf("[RECV] %s\n", message);
         free(message);
     }
-    
+
     printf("Down client recevice message Thread\n");
     close(client_socket);
     exit(0);
