@@ -18,6 +18,7 @@ char* GetLineFromSocket(int socket){
         }
     }
 
+    free(sp);
     return NULL;
 }
 

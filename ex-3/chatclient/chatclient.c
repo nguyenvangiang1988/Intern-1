@@ -45,7 +45,7 @@ void* ClientRecvMessageThread(void* args){
     int client_socket = *((int*)args);
     char* message;
 
-    while (message = GetLineFromSocket(client_socket), message != 0) {
+    while (message = GetLineFromSocket(client_socket), message != NULL) {
         printf("[RECV] %s\n", message);
         free(message);
     }
@@ -53,6 +53,8 @@ void* ClientRecvMessageThread(void* args){
     printf("Down client recevice message Thread\n");
     close(client_socket);
     exit(0);
+    
+    return NULL;
 }
 
 void CleanStdInputStream(){
