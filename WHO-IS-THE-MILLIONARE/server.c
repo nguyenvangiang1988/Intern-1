@@ -258,7 +258,6 @@ int main(){
                             send( UserPlayer[i].Socket, InCorrect, strlen(InCorrect), 0);
                             UserPlayer[i].Check= 0;
                             printf(">> Player %s is failed, disconnect to server!\n", UserPlayer[i].Name);
-                            Display=0;
                             close(UserPlayer[i].Socket);
                         }
 
