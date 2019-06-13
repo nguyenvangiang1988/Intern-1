@@ -75,8 +75,16 @@ int main()
        close(sock);
        return -1;
     }
-    pthread_create(&send_thread, NULL, SendMessage, NULL);
-    pthread_create(&receive_thread, NULL, ReceiveMessage, NULL);
+    int PthreadSend=  pthread_create(&send_thread, NULL, SendMessage, NULL);
+    if( PthreadSend<0){
+	perror("Pthread send");
+	return -1;
+    }
+    int PthreadRecv= pthread_create(&receive_thread, NULL, ReceiveMessage, NULL);
+    if(PthreadRecv<0){
+	perror("Pthread Recieve");
+	return -1;
+    }
     pthread_join(receive_thread, NULL);
     pthread_join(send_thread, NULL);
     valueOfShutdown=shutdown(sock, SHUT_RDWR);
