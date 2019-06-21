@@ -117,6 +117,10 @@ int main() {
         for (int i=0; i<5; i++){
             if ( PROTOCOL[i].check == 1 &&  strcmp( PROTOCOL[i].choose, "y")==0){
                 FILE *fd= fopen( "my_data.txt", "a+" );
+                if(!fd){
+                    perror("OPEN FILE:");
+                    return -1;
+                }
                 fprintf(fd, "\n\n------------Protocol: %s------------------\n", PROTOCOL[i].nameProtocol);
                 fprintf(fd, ">> Version: %d\n", PROTOCOL[i].version);
                 fprintf(fd, ">> Type of services: %d\n", PROTOCOL[i].typeOfService);
