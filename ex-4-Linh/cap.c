@@ -27,6 +27,92 @@
 
 #define MAX_FRAME_SIZE 100000
 
+#define ANY_CHAR '*'
+
+int IsInteger(char* s){
+    int i = -1;
+    
+    while (s[++i] != 0) {
+        if (s[i] < '0' || s[i] > '9')
+            return 0;
+    }
+    
+    return 1;
+}
+
+int IsIPAddress(char* ip){
+    unsigned int digit[4] = {0, 0, 0, 0};
+    int i = -1;
+    int length = 0;
+    int newDigit = 1;
+    
+    if (ip[0] == '\0') {
+        return 0;
+    }
+    
+    while (ip[++i]) {
+        if (ip[i] >= '0' && ip[i] <= '9') {
+            digit[length] *= 10;
+            digit[length] += ip[i] - '0';
+            if (digit[length] > 255) {
+                return 0;
+            }
+            newDigit = 0;
+        }
+        else if (ip[i] == '.') {
+            if (newDigit) {
+                return 0;
+            }
+            
+            length++;
+            newDigit = 1;
+            
+            if (length >= 4) {
+                return 0;
+            }
+        }
+        else {
+            return 0;
+        }
+    }
+    
+    if (length == 3){
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+
+int CompareIPAddress(char* a, char* b){
+    int ia = 0, ib = 0;
+    
+    while (a[ia] && b[ib]) {
+        if (a[ia] == ANY_CHAR || b[ib] == ANY_CHAR) {
+            if (a[ia] == ANY_CHAR && b[ib] == ANY_CHAR) {
+                ia += 1, ib += 1;
+            }
+            else if (a[ia] == ANY_CHAR) {
+                ia += 1;
+                while (b[++ib] != '.');
+            }
+            else if (b[ib] == ANY_CHAR) {
+                ib += 1;
+                while (a[++ia] != '.');
+            }
+        }
+        else {
+            if (a[ia] != b[ib]) {
+                return 1;
+            }
+            
+            ia++, ib++;
+        }
+    }
+    
+    return 0;
+}
+
 char* IPToString(void* i){
     unsigned char* ip = (unsigned char*)i;
     char* str = (char*)malloc(16);
@@ -252,6 +338,195 @@ int KeysFindOffset(char** keys, int length, char* str){
     return -1;
 }
 
+//common structure 
+struct Package {
+    unsigned char* pPackage;
+    unsigned short length;
+};
+
+//Ethernet Protocol
+void EthernetShowInfo(struct Package* package){
+    struct ethhdr* header = (struct ethhdr*)package->pPackage;
+    char* srcMAC = MACToString(header->h_source);
+    char* destMAC = MACToString(header->h_dest);
+    
+    printf("Ethernet Header\n");
+    printf("\t\t|%-30s: %s\n", "Source MAC" ,srcMAC);
+    printf("\t\t|%-30s: %s\n", "Destination MAC", destMAC);
+    printf("\t\t|%-30s: %s\n", "Protocol", EtherGetProtocolString(header->h_proto));
+    printf("\t\t|%-30s: %hu bytes\n", "Length", package->length);
+    
+    free(srcMAC);
+    free(destMAC);
+}
+
+struct Package EthernetGetPayload(struct Package* package){
+    struct Package result;
+    
+    result.length = package->length - sizeof(struct ethhdr);
+    result.pPackage = package->pPackage + package->length - result.length;
+    
+    return result;
+}
+
+unsigned short EthernetGetProtocol(struct Package* package){
+    struct ethhdr* header = (struct ethhdr*)package->pPackage;
+    
+    return ntohs(header->h_proto);
+}
+
+//IP Protocol
+void IPShowInfo(struct Package* package){
+    struct iphdr* header = (struct iphdr*)package->pPackage;
+    char* srcIP = IPToString(&header->saddr);
+    char* destIP = IPToString(&header->daddr);
+    
+    printf("IP Header\n");
+    printf("\t\t|%-30s: %u\n", "Version", header->version);
+    printf("\t\t|%-30s: %u bytes\n", "Internet Header Length", header->ihl * 4);
+    printf("\t\t|%-30s: %hhu\n", "Type of Service", header->tos);
+    printf("\t\t|%-30s: %hu bytes\n", "Total Length", ntohs(header->tot_len));
+    printf("\t\t|%-30s: %hu\n", "ID of fragment", ntohs(header->id));
+    printf("\t\t|%-30s: %d\n", "DF (Do Not Fragment bit)", ntohs(header->frag_off) & 0x4000 ? 1 : 0);
+    printf("\t\t|%-30s: %d\n", "MF (More Fragments bit)", ntohs(header->frag_off) & 0x2000 ? 1 : 0);
+    printf("\t\t|%-30s: %u\n", "Fragment Offset", ntohs(header->frag_off) & 0x1fff);
+    printf("\t\t|%-30s: %hhu\n", "TTL", header->ttl);
+    printf("\t\t|%-30s: %s\n", "Protocol", IPGetProtocolString(header->protocol));
+    printf("\t\t|%-30s: 0x%04hx\n", "Header checksum", ntohs(header->check));
+    printf("\t\t|%-30s: %s\n", "Source IP", srcIP);
+    printf("\t\t|%-30s: %s\n", "Destination IP", destIP);
+    
+    free(srcIP);
+    free(destIP);
+}
+
+struct Package IPGetPayload(struct Package* package){
+    struct iphdr* header = (struct iphdr*)package->pPackage;
+    struct Package result;
+    
+    result.length = package->length - (header->ihl << 2);
+    result.pPackage = package->pPackage + package->length - result.length;
+    //option
+    //result.length = header->tot_len - (header->ihl << 2);
+    return result;
+}
+
+unsigned char IPGetProtocol(struct Package* package){
+    struct iphdr* header = (struct iphdr*)package->pPackage;
+    
+    return (header->protocol);
+}
+
+char* IPGetSourceIPString(struct Package* package){
+    struct iphdr* header = (struct iphdr*)package->pPackage;
+    
+    return IPToString(&header->saddr);
+}
+
+char* IPGetDestinationString(struct Package* package){
+    struct iphdr* header = (struct iphdr*)package->pPackage;
+    
+    return IPToString(&header->daddr);
+}
+
+//TCP Protocol
+struct Package TCPGetPayload(struct Package* package){
+    struct tcphdr* header = (struct tcphdr*)package->pPackage;
+    struct Package result;
+        
+    result.length = package->length - (header->doff << 2);
+    result.pPackage = package->pPackage + package->length - result.length;
+    
+    return result;
+}
+
+void TCPShowInfo(struct Package* package){
+    struct tcphdr* header = (struct tcphdr*)package->pPackage;
+    struct Package message = TCPGetPayload(package);
+    
+    printf("TCP Header\n");
+    printf("\t\t|%-30s: %hu\n", "Source Port", ntohs(header->source));
+    printf("\t\t|%-30s: %hu\n", "Destination Port", ntohs(header->dest));
+    printf("\t\t|%-30s: %u\n", "Sequence number", ntohl(header->seq));
+    printf("\t\t|%-30s: %u\n", "ACK number", ntohl(header->ack_seq));
+    printf("\t\t|%-30s: %u\n", "Header length", header->doff << 2);
+    printf("\t\t\t\t|%s: %s\n", "URG", header->urg ? "Set" : "Not Set");
+    printf("\t\t\t\t|%s: %s\n", "ACK", header->ack ? "Set" : "Not Set");
+    printf("\t\t\t\t|%s: %s\n", "PSH", header->psh ? "Set" : "Not Set");
+    printf("\t\t\t\t|%s: %s\n", "RST", header->rst ? "Set" : "Not Set");
+    printf("\t\t\t\t|%s: %s\n", "SYN", header->syn ? "Set" : "Not Set");
+    printf("\t\t\t\t|%s: %s\n", "FIN", header->fin ? "Set" : "Not Set");
+    printf("\t\t|%-30s: %hu\n", "Window", ntohs(header->window));
+    printf("\t\t|%-30s: 0x%04hx\n", "Checksum", ntohs(header->check));
+    printf("\t\t|%-30s: %hu\n", "URG Pointer", ntohs(header->urg_ptr));
+    
+    printf("Data: %hu bytes\n", message.length);
+    PrintHexData(message.pPackage, message.length);
+    printf("\n");
+    PrintCharData(message.pPackage, message.length);
+}
+
+unsigned short TCPGetSourcePort(struct Package* package){
+    struct tcphdr* header = (struct tcphdr*)package->pPackage;
+    
+    return ntohs(header->source);
+}
+
+unsigned short TCPGetDestinationPort(struct Package* package){
+    struct tcphdr* header = (struct tcphdr*)package->pPackage;
+    
+    return ntohs(header->dest);
+}
+
+//UDP Protocol 
+struct Package UDPGetPayload(struct Package* package){
+    struct udphdr* header = (struct udphdr*)package->pPackage;
+    struct Package result;
+    
+    result.length = package->length - sizeof(struct udphdr);
+    result.pPackage = package->pPackage + package->length - result.length;
+    
+    return result;
+}
+
+void UDPShowInfo(struct Package* package){
+    struct udphdr* header = (struct udphdr*)package->pPackage;
+    struct Package message = UDPGetPayload(package);
+    
+    printf("UDP Header\n");
+    printf("\t\t|%-30s: %hu\n", "Source Port", ntohs(header->source));
+    printf("\t\t|%-30s: %hu\n", "Destination Port", ntohs(header->dest));
+    printf("\t\t|%-30s: %hu\n", "Length", ntohs(header->len));
+    printf("\t\t|%-30s: 0x%04hu\n", "Checksum", ntohs(header->check));
+    
+    printf("Data: %hu bytes\n", message.length);
+    PrintHexData(message.pPackage, message.length);
+    printf("\n");
+    PrintCharData(message.pPackage, message.length);
+}
+
+unsigned short UDPGetSourcePort(struct Package* package){
+    struct udphdr* header = (struct udphdr*)package->pPackage;
+    
+    return ntohs(header->source);
+}
+
+unsigned short UDPGetDestinationPort(struct Package* package){
+    struct udphdr* header = (struct udphdr*)package->pPackage;
+    
+    return ntohs(header->dest);
+}
+
+//ICMP Protocol
+void ICMPShowInfo(struct Package* package){
+    struct icmphdr* header = (struct icmphdr*)package->pPackage;
+    
+    printf("ICMP Header\n");
+    printf("\t\t|%-30s: %hhu\n", "Type", header->type);
+    printf("\t\t|%-30s: %hhu\n", "Code", header->code);
+    printf("\t\t|%-30s: 0x%04hx\n", "Checksum", ntohs(header->checksum));
+}
+
 int main(int argsTotal, char** args) {
     unsigned char frame[MAX_FRAME_SIZE];
     int sk;
@@ -270,30 +545,48 @@ int main(int argsTotal, char** args) {
     int i;
     
     int keyOffset;
-    int kvpLength = argsTotal / 2;
+    int argPairsLength = argsTotal / 2;
     char* argsStringArray[] = {
         "-i", //interface
         "-p", //protocol: IP, ICMP, TCP, UDP
         "-src", //source IP
-        "-dest" //destination IP
+        "-dest", //destination IP
+        "-sp", //source Port
+        "-dp", //destination Port
+        "-minsize", //minimum size
+        "-maxsize", //maximum size
     };
-    char **keys, **values;
+    char **argKeys, **argValues;
+    char *supportedProtocolsStringArray[] = {
+        "ICMP",
+        "TCP",
+        "UDP"
+    };
+    int bTransportProtocolFilter = 0;
+    unsigned char nTransportProtocolFilter;
+    int bTransportSrcPortFilter = 0, bTransportDestPortFilter = 0;
+    unsigned short nTransportSrcPort, nTransportDestPort;
+    int bIPSourceAddressFilter = 0, bIPDestinationAddressFilter = 0;
+    char *sIPSourceAddressFilter, *sIPDestinationAddressFilter;
+    unsigned int minsize = 0, maxsize = MAX_FRAME_SIZE;
     
+    struct Package ethPackage, ipPackage, icmpPackage, tcpPackage, udpPackage;
+    char* ipTmp;
     
     if (argsTotal % 2 == 0) {
         printf("Invalid argument!\n");
         return 0;
     }
     
-    if (kvpLength) {
-        keys = (char**)malloc(sizeof(char*) * kvpLength);
-        values = (char**)malloc(sizeof(char*) * kvpLength);
+    if (argPairsLength) {
+        argKeys = (char**)malloc(sizeof(char*) * argPairsLength);
+        argValues = (char**)malloc(sizeof(char*) * argPairsLength);
 
-        for (i = 0; i < kvpLength; i++) {
-            keys[i] = args[i * 2 + 1];
-            values[i] = args[i * 2 + 2];
-            if (!InStringArray(argsStringArray, sizeof argsStringArray / sizeof(char*), keys[i])) {
-                printf("Invalid parameter: %s\n", keys[i]);
+        for (i = 0; i < argPairsLength; i++) {
+            argKeys[i] = args[i * 2 + 1];
+            argValues[i] = args[i * 2 + 2];
+            if (!InStringArray(argsStringArray, sizeof argsStringArray / sizeof(char*), argKeys[i])) {
+                printf("Invalid parameter: %s\n", argKeys[i]);
                 return 0;
             }
         }
@@ -305,105 +598,196 @@ int main(int argsTotal, char** args) {
         return 0;
     }
     
-    if (keyOffset = KeysFindOffset(keys, kvpLength, "-i"), keyOffset != -1) {
-        if (RawSocketFilterInterface(sk, values[keyOffset]) == -1) {
+    //Filter by interface
+    if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-i"), keyOffset != -1) {
+        if (RawSocketFilterInterface(sk, argValues[keyOffset]) == -1) {
             return 0;
         }
         else {
-            printf("Listening %s\n", values[keyOffset]);
+            printf("Listening %s\n", argValues[keyOffset]);
         }
     }
     
-    while (rbytes = read(sk, frame, MAX_FRAME_SIZE), rbytes > 0) {
-        ethHeader = (struct ethhdr*)frame;
-        srcmac = MACToString(ethHeader->h_source);
-        destmac = MACToString(ethHeader->h_dest);
-        
-        printf("#%u\n", index++);
-        printf("********************************************************************\n");
-        printf("Ethernet Header\n");
-        printf("\t\t|%-30s: %s\n", "Source MAC" ,srcmac);
-        printf("\t\t|%-30s: %s\n", "Destination MAC", destmac);
-        printf("\t\t|%-30s: %s\n", "Protocol", EtherGetProtocolString(ethHeader->h_proto));
-        printf("\t\t|%-30s: %d bytes\n", "Length", rbytes);
-        printf("\n");
-        
-        if (htons(ethHeader->h_proto) == ETH_PROTOCOL_IP4) {
-            //Common IPv4 Header
-            ip4header = (struct iphdr*)(frame + sizeof(struct ethhdr));
-            srcip = IPToString(&ip4header->saddr);
-            destip = IPToString(&ip4header->daddr);
+    //Create Source and Destination IP Filter
+    if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-src"), keyOffset != -1) {
+        bIPSourceAddressFilter = 1;
+        sIPSourceAddressFilter = argValues[keyOffset];
+    }
+    
+    if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-dest"), keyOffset != -1) {
+        bIPDestinationAddressFilter = 1;
+        sIPDestinationAddressFilter = argValues[keyOffset];
+    }
+    
+    //Create Protocol Filter
+    if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-p"), keyOffset != -1) {
+        if (InStringArray(supportedProtocolsStringArray, sizeof supportedProtocolsStringArray / sizeof(char*), argValues[keyOffset])) {
+            bTransportProtocolFilter = 1;
             
-            printf("IP Header\n");
-            printf("\t\t|%-30s: %u\n", "Version", ip4header->version);
-            printf("\t\t|%-30s: %u bytes\n", "Internet Header Length", ip4header->ihl * 4);
-            printf("\t\t|%-30s: %u\n", "Type of Service", (unsigned)ip4header->tos);
-            printf("\t\t|%-30s: %u bytes\n", "Total Length", (unsigned)ntohs(ip4header->tot_len));
-            printf("\t\t|%-30s: %u\n", "ID of fragment", (unsigned)ntohs(ip4header->id));
-            printf("\t\t|%-30s: %d\n", "DF (Do Not Fragment bit)", ntohs(ip4header->frag_off) & 0x4000 ? 1 : 0);
-            printf("\t\t|%-30s: %d\n", "MF (More Fragments bit)", ntohs(ip4header->frag_off) & 0x2000 ? 1 : 0);
-            printf("\t\t|%-30s: %u\n", "Fragment Offset", (unsigned)ntohs(ip4header->frag_off) & 0x1fff);
-            printf("\t\t|%-30s: %u\n", "TTL", (unsigned)ip4header->ttl);
-            printf("\t\t|%-30s: %s\n", "Protocol", IPGetProtocolString(ip4header->protocol));
-            printf("\t\t|%-30s: 0x%04x\n", "Header checksum", ntohs(ip4header->check));
-            printf("\t\t|%-30s: %s\n", "Source IP", srcip);
-            printf("\t\t|%-30s: %s\n", "Destination IP", destip);
-            
-            if (ip4header->protocol == IP_PROTOCOL_TCP) {
-                //TCP Header
-                tcpHeader = (struct tcphdr*)(frame + sizeof(struct ethhdr) + ip4header->ihl * 4);
-                printf("TCP Header\n");
-                printf("\t\t|%-30s: %u\n", "Source Port", ntohs(tcpHeader->source));
-                printf("\t\t|%-30s: %u\n", "Destination Port", ntohs(tcpHeader->dest));
-                printf("\t\t|%-30s: %u\n", "Sequence number", ntohl(tcpHeader->seq));
-                printf("\t\t|%-30s: %u\n", "ACK number", ntohl(tcpHeader->ack_seq));
-                printf("\t\t|%-30s: %u\n", "Header length", tcpHeader->doff << 2);
-                printf("\t\t\t\t|%s: %s\n", "URG", tcpHeader->urg ? "Set" : "Not Set");
-                printf("\t\t\t\t|%s: %s\n", "ACK", tcpHeader->ack ? "Set" : "Not Set");
-                printf("\t\t\t\t|%s: %s\n", "PSH", tcpHeader->psh ? "Set" : "Not Set");
-                printf("\t\t\t\t|%s: %s\n", "RST", tcpHeader->rst ? "Set" : "Not Set");
-                printf("\t\t\t\t|%s: %s\n", "SYN", tcpHeader->syn ? "Set" : "Not Set");
-                printf("\t\t\t\t|%s: %s\n", "FIN", tcpHeader->fin ? "Set" : "Not Set");
-                
-                printf("\t\t|%-30s: %u\n", "Window", ntohs(tcpHeader->window));
-                printf("\t\t|%-30s: 0x%x\n", "Checksum", ntohs(tcpHeader->check));
-                printf("\t\t|%-30s: %u\n", "URG Pointer", ntohs(tcpHeader->urg_ptr));
-                
-                length = ntohs(ip4header->tot_len) - ip4header->ihl * 4 - tcpHeader->doff * 4;
-                printf("Data: %u bytes\n", length);
-                PrintHexData(frame + sizeof(struct ethhdr) + ip4header->ihl * 4 + tcpHeader->doff * 4, length);
-                PrintCharData(frame + sizeof(struct ethhdr) + ip4header->ihl * 4 + tcpHeader->doff * 4, length);
+            if (strcmp(argValues[keyOffset], "TCP") == 0) {
+                nTransportProtocolFilter = IP_PROTOCOL_TCP;
+            }
+            else if (strcmp(argValues[keyOffset], "UDP") == 0) {
+                nTransportProtocolFilter = IP_PROTOCOL_UDP;
+            }
+            else if (strcmp(argValues[keyOffset], "ICMP") == 0) {
+                nTransportProtocolFilter = IP_PROTOCOL_ICMP;
             }
             
-            if (ip4header->protocol == IP_PROTOCOL_UDP) {
-                //UDP Header
-                udpHeader = (struct udphdr*)(frame + sizeof(struct ethhdr) + ip4header->ihl * 4);
-                printf("UDP Header\n");
-                printf("\t\t|%-30s: %u\n", "Source Port", ntohs(udpHeader->source));
-                printf("\t\t|%-30s: %u\n", "Destination Port", ntohs(udpHeader->dest));
-                printf("\t\t|%-30s: %u\n", "Length", ntohs(udpHeader->len));
-                printf("\t\t|%-30s: 0x%u\n", "Checksum", ntohs(udpHeader->check));
+            if (nTransportProtocolFilter == IP_PROTOCOL_TCP || nTransportProtocolFilter == IP_PROTOCOL_UDP) {
+                if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-sp"), keyOffset != -1) {
+                    if (!IsInteger(argValues[keyOffset])) {
+                        printf("Source Port invalid!\n");
+                        return 0;
+                    }
+                    bTransportSrcPortFilter = 1;
+                    nTransportSrcPort = atoi(argValues[keyOffset]);
+                }
                 
-                length = ntohs(udpHeader->len) - sizeof(struct udphdr);
-                printf("Data: %u bytes\n", length);
-                PrintHexData(frame + sizeof(struct ethhdr) + ip4header->ihl * 4 + sizeof(struct udphdr), length);
-                PrintCharData(frame + sizeof(struct ethhdr) + ip4header->ihl * 4 + sizeof(struct udphdr), length);
-            }
-            
-            if (ip4header->protocol == IP_PROTOCOL_ICMP) {
-                //ICMP Header
-                icmpHeader = (struct icmphdr*)(frame + sizeof(struct ethhdr) + ip4header->ihl * 4);
-                printf("ICMP Header\n");
-                printf("\t\t|%-30s: %d\n", "Type", icmpHeader->type);
-                printf("\t\t|%-30s: %d\n", "Code", icmpHeader->code);
-                printf("\t\t|%-30s: 0x%04x\n", "Checksum", ntohs(icmpHeader->checksum));
+                if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-dp"), keyOffset != -1) {
+                    if (!IsInteger(argValues[keyOffset])) {
+                        printf("Destination Port invalid!\n");
+                        return 0;
+                    }
+                    bTransportDestPortFilter = 1;
+                    nTransportDestPort = atoi(argValues[keyOffset]);
+                }
             }
         }
+        else {
+            printf("Unsupported protocol to filter\n");
+            return 0;
+        }
+    }
+    
+    //Create Size Filter
+    if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-minsize"), keyOffset != -1) {
+        if (!IsInteger(argValues[keyOffset])) {
+            printf("Minimum size invalid\n");
+            return 0;
+        }
         
-        printf("\n\n");
+        minsize = atoi(argValues[keyOffset]);
+    }
+    
+    if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-maxsize"), keyOffset != -1) {
+        if (!IsInteger(argValues[keyOffset])) {
+            printf("Minimum size invalid\n");
+            return 0;
+        }
         
-        free(srcmac);
-        free(destmac);
+        maxsize = atoi(argValues[keyOffset]);
+    }
+    
+    if (bIPSourceAddressFilter) {
+        printf("Filter by Source IP: %s\n", sIPSourceAddressFilter);
+    }
+    
+    if (bIPDestinationAddressFilter) {
+        printf("Filter by Source IP: %s\n", sIPDestinationAddressFilter);
+    }
+    
+    if (bTransportProtocolFilter) {
+        printf("Filter by Protocol code: %hhu\n", nTransportProtocolFilter);
+    }
+    
+    if (bTransportSrcPortFilter) {
+        printf("Filter by Source Port: %hu\n", nTransportSrcPort);
+    }
+    
+    if (bTransportDestPortFilter) {
+        printf("Filter by Destination Port: %hu\n", nTransportDestPort);
+    }
+    
+    while (rbytes = read(sk, frame, MAX_FRAME_SIZE), rbytes > 0) {
+        if (rbytes >= minsize && rbytes <= maxsize) {
+            ethPackage.pPackage = frame;
+            ethPackage.length = rbytes;
+            
+            if (EthernetGetProtocol(&ethPackage) == ETH_PROTOCOL_IP4) {
+                ipPackage = EthernetGetPayload(&ethPackage);
+                
+                if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_ICMP) {
+                    icmpPackage = IPGetPayload(&ipPackage);
+                }
+                else if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_TCP) {
+                    tcpPackage = IPGetPayload(&ipPackage);
+                }
+                else if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_UDP) {
+                    udpPackage = IPGetPayload(&ipPackage);
+                }
+            }
+            
+            if (bIPSourceAddressFilter || bIPDestinationAddressFilter || bTransportProtocolFilter || bTransportSrcPortFilter || bTransportDestPortFilter) {
+                //have filter in any here, then it is IP protocol
+                if (EthernetGetProtocol(&ethPackage) == ETH_PROTOCOL_IP4) {
+                    if (bIPSourceAddressFilter) {
+                        ipTmp = IPGetSourceIPString(&ipPackage);
+                        
+                        if (CompareIPAddress(ipTmp, sIPSourceAddressFilter)) {
+                            free(ipTmp);
+                            continue;
+                        }
+                    }
+                    
+                    if (bIPDestinationAddressFilter) {
+                        ipTmp = IPGetDestinationString(&ipPackage);
+                        
+                        if (CompareIPAddress(ipTmp, sIPDestinationAddressFilter)) {
+                            free(ipTmp);
+                            continue;
+                        }
+                    }
+                    
+                    if (bTransportProtocolFilter) {
+                        if (IPGetProtocol(&ipPackage) != nTransportProtocolFilter) {
+                            continue;
+                        }
+                    }
+                    
+                    if (bTransportSrcPortFilter) {
+                        if (TCPGetSourcePort(&tcpPackage) != nTransportSrcPort) {
+                            continue;
+                        }
+                    }
+                    
+                    if (bTransportDestPortFilter) {
+                        if (TCPGetDestinationPort(&tcpPackage) != nTransportDestPort) {
+                            continue;
+                        }
+                    }
+                }
+                else {
+                    continue;
+                }
+            }
+            
+            printf("#%u\n", index++);
+            printf("********************************************************************\n");
+
+            EthernetShowInfo(&ethPackage);
+            printf("\n");
+            
+            if (EthernetGetProtocol(&ethPackage) == ETH_PROTOCOL_IP4) {
+                IPShowInfo(&ipPackage);
+                printf("\n");
+                
+                if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_ICMP) {
+                    ICMPShowInfo(&icmpPackage);
+                    printf("\n");
+                }
+                else if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_TCP) {
+                    TCPShowInfo(&tcpPackage);
+                    printf("\n");
+                }
+                else if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_UDP) {
+                    UDPShowInfo(&udpPackage);
+                    printf("\n");
+                }
+            }
+
+            printf("\n");
+        }
     }
     
     printf("Finishing...");
