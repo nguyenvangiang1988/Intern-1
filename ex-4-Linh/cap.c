@@ -289,31 +289,46 @@ int RawSocketFilterInterface(int sk, char* ifn){
     return 0;
 }
 
-void PrintHexData(void* d, unsigned length){
+void PrintHexData(void* d, unsigned length, FILE* st){
     int i = 0;
     int mark = -1;
     unsigned char* data = (unsigned char*)d;
     
     for (; i < length; i++) {
         printf("%02x ", (unsigned)data[i]);
+        if (st) {
+            fprintf(st, "%02x ", (unsigned)data[i]);
+        }
         mark = (mark + 1) % 16;
         if (mark == 15) {
             printf("\n");
+            if (st) {
+                fprintf(st, "\n");
+            }
         }
     }
     
     printf("\n");
+    if (st) {
+        fprintf(st, "\n");
+    }
 }
 
-void PrintCharData(void* d, unsigned length){
+void PrintCharData(void* d, unsigned length, FILE* st){
     int i = 0;
     unsigned char* data = (unsigned char*)d;
     
     for (; i < length; i++) {
         printf("%c", (char)data[i]);
+        if (st) {
+            fprintf(st, "%c", (char)data[i]);
+        }
     }
     
     printf("\n");
+    if (st) {
+        fprintf(st, "\n");
+    }
 }
 
 int InStringArray(char** sarray, int length, char* str){
@@ -345,7 +360,7 @@ struct Package {
 };
 
 //Ethernet Protocol
-void EthernetShowInfo(struct Package* package){
+void EthernetShowInfo(struct Package* package, FILE* st){
     struct ethhdr* header = (struct ethhdr*)package->pPackage;
     char* srcMAC = MACToString(header->h_source);
     char* destMAC = MACToString(header->h_dest);
@@ -355,6 +370,14 @@ void EthernetShowInfo(struct Package* package){
     printf("\t\t|%-30s: %s\n", "Destination MAC", destMAC);
     printf("\t\t|%-30s: %s\n", "Protocol", EtherGetProtocolString(header->h_proto));
     printf("\t\t|%-30s: %hu bytes\n", "Length", package->length);
+    
+    if (st) {
+        fprintf(st, "Ethernet Header\n");
+        fprintf(st, "\t\t|%-30s: %s\n", "Source MAC" ,srcMAC);
+        fprintf(st, "\t\t|%-30s: %s\n", "Destination MAC", destMAC);
+        fprintf(st, "\t\t|%-30s: %s\n", "Protocol", EtherGetProtocolString(header->h_proto));
+        fprintf(st, "\t\t|%-30s: %hu bytes\n", "Length", package->length);
+    }
     
     free(srcMAC);
     free(destMAC);
@@ -376,7 +399,7 @@ unsigned short EthernetGetProtocol(struct Package* package){
 }
 
 //IP Protocol
-void IPShowInfo(struct Package* package){
+void IPShowInfo(struct Package* package, FILE* st){
     struct iphdr* header = (struct iphdr*)package->pPackage;
     char* srcIP = IPToString(&header->saddr);
     char* destIP = IPToString(&header->daddr);
@@ -395,6 +418,23 @@ void IPShowInfo(struct Package* package){
     printf("\t\t|%-30s: 0x%04hx\n", "Header checksum", ntohs(header->check));
     printf("\t\t|%-30s: %s\n", "Source IP", srcIP);
     printf("\t\t|%-30s: %s\n", "Destination IP", destIP);
+    
+    if (st) {
+        fprintf(st, "IP Header\n");
+        fprintf(st, "\t\t|%-30s: %u\n", "Version", header->version);
+        fprintf(st, "\t\t|%-30s: %u bytes\n", "Internet Header Length", header->ihl * 4);
+        fprintf(st, "\t\t|%-30s: %hhu\n", "Type of Service", header->tos);
+        fprintf(st, "\t\t|%-30s: %hu bytes\n", "Total Length", ntohs(header->tot_len));
+        fprintf(st, "\t\t|%-30s: %hu\n", "ID of fragment", ntohs(header->id));
+        fprintf(st, "\t\t|%-30s: %d\n", "DF (Do Not Fragment bit)", ntohs(header->frag_off) & 0x4000 ? 1 : 0);
+        fprintf(st, "\t\t|%-30s: %d\n", "MF (More Fragments bit)", ntohs(header->frag_off) & 0x2000 ? 1 : 0);
+        fprintf(st, "\t\t|%-30s: %u\n", "Fragment Offset", ntohs(header->frag_off) & 0x1fff);
+        fprintf(st, "\t\t|%-30s: %hhu\n", "TTL", header->ttl);
+        fprintf(st, "\t\t|%-30s: %s\n", "Protocol", IPGetProtocolString(header->protocol));
+        fprintf(st, "\t\t|%-30s: 0x%04hx\n", "Header checksum", ntohs(header->check));
+        fprintf(st, "\t\t|%-30s: %s\n", "Source IP", srcIP);
+        fprintf(st, "\t\t|%-30s: %s\n", "Destination IP", destIP);
+    }
     
     free(srcIP);
     free(destIP);
@@ -440,7 +480,7 @@ struct Package TCPGetPayload(struct Package* package){
     return result;
 }
 
-void TCPShowInfo(struct Package* package){
+void TCPShowInfo(struct Package* package, FILE* st){
     struct tcphdr* header = (struct tcphdr*)package->pPackage;
     struct Package message = TCPGetPayload(package);
     
@@ -461,9 +501,35 @@ void TCPShowInfo(struct Package* package){
     printf("\t\t|%-30s: %hu\n", "URG Pointer", ntohs(header->urg_ptr));
     
     printf("Data: %hu bytes\n", message.length);
-    PrintHexData(message.pPackage, message.length);
+    
+    if (st) {
+        fprintf(st, "TCP Header\n");
+        fprintf(st, "\t\t|%-30s: %hu\n", "Source Port", ntohs(header->source));
+        fprintf(st, "\t\t|%-30s: %hu\n", "Destination Port", ntohs(header->dest));
+        fprintf(st, "\t\t|%-30s: %u\n", "Sequence number", ntohl(header->seq));
+        fprintf(st, "\t\t|%-30s: %u\n", "ACK number", ntohl(header->ack_seq));
+        fprintf(st, "\t\t|%-30s: %u\n", "Header length", header->doff << 2);
+        fprintf(st, "\t\t\t\t|%s: %s\n", "URG", header->urg ? "Set" : "Not Set");
+        fprintf(st, "\t\t\t\t|%s: %s\n", "ACK", header->ack ? "Set" : "Not Set");
+        fprintf(st, "\t\t\t\t|%s: %s\n", "PSH", header->psh ? "Set" : "Not Set");
+        fprintf(st, "\t\t\t\t|%s: %s\n", "RST", header->rst ? "Set" : "Not Set");
+        fprintf(st, "\t\t\t\t|%s: %s\n", "SYN", header->syn ? "Set" : "Not Set");
+        fprintf(st, "\t\t\t\t|%s: %s\n", "FIN", header->fin ? "Set" : "Not Set");
+        fprintf(st, "\t\t|%-30s: %hu\n", "Window", ntohs(header->window));
+        fprintf(st, "\t\t|%-30s: 0x%04hx\n", "Checksum", ntohs(header->check));
+        fprintf(st, "\t\t|%-30s: %hu\n", "URG Pointer", ntohs(header->urg_ptr));
+
+        fprintf(st, "Data: %hu bytes\n", message.length);
+    }
+    
+    PrintHexData(message.pPackage, message.length, st);
+    
     printf("\n");
-    PrintCharData(message.pPackage, message.length);
+    if (st) {
+        fprintf(st, "\n");
+    }
+    
+    PrintCharData(message.pPackage, message.length, st);
 }
 
 unsigned short TCPGetSourcePort(struct Package* package){
@@ -489,7 +555,7 @@ struct Package UDPGetPayload(struct Package* package){
     return result;
 }
 
-void UDPShowInfo(struct Package* package){
+void UDPShowInfo(struct Package* package, FILE* st){
     struct udphdr* header = (struct udphdr*)package->pPackage;
     struct Package message = UDPGetPayload(package);
     
@@ -500,9 +566,25 @@ void UDPShowInfo(struct Package* package){
     printf("\t\t|%-30s: 0x%04hu\n", "Checksum", ntohs(header->check));
     
     printf("Data: %hu bytes\n", message.length);
-    PrintHexData(message.pPackage, message.length);
-    printf("\n");
-    PrintCharData(message.pPackage, message.length);
+    
+    if (st) {
+        fprintf(st, "UDP Header\n");
+        fprintf(st, "\t\t|%-30s: %hu\n", "Source Port", ntohs(header->source));
+        fprintf(st, "\t\t|%-30s: %hu\n", "Destination Port", ntohs(header->dest));
+        fprintf(st, "\t\t|%-30s: %hu\n", "Length", ntohs(header->len));
+        fprintf(st, "\t\t|%-30s: 0x%04hu\n", "Checksum", ntohs(header->check));
+
+        fprintf(st, "Data: %hu bytes\n", message.length);
+    }
+    
+    PrintHexData(message.pPackage, message.length, st);
+    
+    printf(st, "\n");
+    if (st) {
+        fprintf(st, "\n");
+    }
+    
+    PrintCharData(message.pPackage, message.length, st);
 }
 
 unsigned short UDPGetSourcePort(struct Package* package){
@@ -518,18 +600,26 @@ unsigned short UDPGetDestinationPort(struct Package* package){
 }
 
 //ICMP Protocol
-void ICMPShowInfo(struct Package* package){
+void ICMPShowInfo(struct Package* package, FILE* st){
     struct icmphdr* header = (struct icmphdr*)package->pPackage;
     
     printf("ICMP Header\n");
     printf("\t\t|%-30s: %hhu\n", "Type", header->type);
     printf("\t\t|%-30s: %hhu\n", "Code", header->code);
     printf("\t\t|%-30s: 0x%04hx\n", "Checksum", ntohs(header->checksum));
+    
+    if (st) {
+        fprintf(st, "ICMP Header\n");
+        fprintf(st, "\t\t|%-30s: %hhu\n", "Type", header->type);
+        fprintf(st, "\t\t|%-30s: %hhu\n", "Code", header->code);
+        fprintf(st, "\t\t|%-30s: 0x%04hx\n", "Checksum", ntohs(header->checksum));
+    }
 }
 
 int main(int argsTotal, char** args) {
     unsigned char frame[MAX_FRAME_SIZE];
     int sk;
+    FILE* outputFile = NULL;
     int rbytes;
     char *srcip, *destip;
     char *srcmac, *destmac;
@@ -555,6 +645,7 @@ int main(int argsTotal, char** args) {
         "-dp", //destination Port
         "-minsize", //minimum size
         "-maxsize", //maximum size
+        "-o" //output file
     };
     char **argKeys, **argValues;
     char *supportedProtocolsStringArray[] = {
@@ -601,6 +692,7 @@ int main(int argsTotal, char** args) {
     //Filter by interface
     if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-i"), keyOffset != -1) {
         if (RawSocketFilterInterface(sk, argValues[keyOffset]) == -1) {
+            close(sk);
             return 0;
         }
         else {
@@ -638,6 +730,7 @@ int main(int argsTotal, char** args) {
                 if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-sp"), keyOffset != -1) {
                     if (!IsInteger(argValues[keyOffset])) {
                         printf("Source Port invalid!\n");
+                        close(sk);
                         return 0;
                     }
                     bTransportSrcPortFilter = 1;
@@ -647,6 +740,7 @@ int main(int argsTotal, char** args) {
                 if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-dp"), keyOffset != -1) {
                     if (!IsInteger(argValues[keyOffset])) {
                         printf("Destination Port invalid!\n");
+                        close(sk);
                         return 0;
                     }
                     bTransportDestPortFilter = 1;
@@ -656,6 +750,7 @@ int main(int argsTotal, char** args) {
         }
         else {
             printf("Unsupported protocol to filter\n");
+            close(sk);
             return 0;
         }
     }
@@ -664,6 +759,7 @@ int main(int argsTotal, char** args) {
     if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-minsize"), keyOffset != -1) {
         if (!IsInteger(argValues[keyOffset])) {
             printf("Minimum size invalid\n");
+            close(sk);
             return 0;
         }
         
@@ -673,10 +769,21 @@ int main(int argsTotal, char** args) {
     if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-maxsize"), keyOffset != -1) {
         if (!IsInteger(argValues[keyOffset])) {
             printf("Minimum size invalid\n");
+            close(sk);
             return 0;
         }
         
         maxsize = atoi(argValues[keyOffset]);
+    }
+    
+    //Create output file
+    if (keyOffset = KeysFindOffset(argKeys, argPairsLength, "-o"), keyOffset != -1) {
+        outputFile = fopen(argValues[keyOffset], "w");
+        if (outputFile == NULL) {
+            printf("cannot create output file!\n");
+            close(sk);
+            return 0;
+        }
     }
     
     if (bIPSourceAddressFilter) {
@@ -762,31 +869,59 @@ int main(int argsTotal, char** args) {
                 }
             }
             
-            printf("#%u\n", index++);
+            printf("#%u\n", index);
             printf("********************************************************************\n");
+            if (outputFile) {
+                fprintf(outputFile, "#%u\n", index);
+                fprintf(outputFile, "********************************************************************\n");
+            }
 
-            EthernetShowInfo(&ethPackage);
+            EthernetShowInfo(&ethPackage, outputFile);
             printf("\n");
+            if (outputFile) {
+                fprintf(outputFile, "\n");
+            }
             
             if (EthernetGetProtocol(&ethPackage) == ETH_PROTOCOL_IP4) {
-                IPShowInfo(&ipPackage);
+                IPShowInfo(&ipPackage, outputFile);
                 printf("\n");
+                if (outputFile) {
+                    fprintf(outputFile, "\n");
+                }
                 
                 if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_ICMP) {
-                    ICMPShowInfo(&icmpPackage);
+                    ICMPShowInfo(&icmpPackage, outputFile);
                     printf("\n");
+                    if (outputFile) {
+                        fprintf(outputFile, "\n");
+                    }
                 }
                 else if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_TCP) {
-                    TCPShowInfo(&tcpPackage);
+                    TCPShowInfo(&tcpPackage, outputFile);
                     printf("\n");
+                    if (outputFile) {
+                        fprintf(outputFile, "\n");
+                    }
                 }
                 else if (IPGetProtocol(&ipPackage) == IP_PROTOCOL_UDP) {
-                    UDPShowInfo(&udpPackage);
+                    UDPShowInfo(&udpPackage, outputFile);
                     printf("\n");
+                    if (outputFile) {
+                        fprintf(outputFile, "\n");
+                    }
                 }
             }
 
             printf("\n");
+            if (outputFile) {
+                fprintf(outputFile, "\n");
+            }
+            
+            if (outputFile) {
+                fflush(outputFile);
+            }
+            
+            index++;
         }
     }
     
