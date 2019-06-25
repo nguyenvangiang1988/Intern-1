@@ -927,6 +927,7 @@ int main(int argsTotal, char** args) {
     
     printf("Finishing...");
     close(sk);
+    close(outputFile);
     
     return 0;
 }
