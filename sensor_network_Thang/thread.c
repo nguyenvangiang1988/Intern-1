@@ -27,14 +27,16 @@ fd_set EVEN;
 
 
 struct THREAD_SON {
-    pthread_t threadDeclare;
     int num;
     int totalThread;
     int enable;
     int disable;
     int state;
+    int timeRandom;
     
 } ELEMENT [MAXIMUM_USER];
+
+
 
 void InitThreadSon(){
     for (int i=0; i< MAXIMUM_USER; i++){
@@ -43,7 +45,18 @@ void InitThreadSon(){
         ELEMENT [i].enable       = 0;
         ELEMENT [i].disable      = 0;
         ELEMENT [i].state        = 0;
+        ELEMENT [i].timeRandom   = 0;
     }
+}
+
+int CountRoom(){
+    int count= 0;
+    for (int i=0; i< MAXIMUM_USER; i++){
+        if (ELEMENT [i].num != 0){
+            count ++;
+        }
+    }
+    return count;
 }
 
 //================================================================
@@ -51,18 +64,24 @@ void InitThreadSon(){
 void *SendMessage() {
     while (1) {
         for (int i=0; i< MAXIMUM_USER; i++){
+            ELEMENT [i].totalThread= CountRoom();
+            ELEMENT [i].timeRandom= 16 + rand() % 17;
+
             if (ELEMENT [i].num !=0){
                 char Message[1000];  
+                srand (time(NULL));
                 sprintf (Message, ">> Number of room: %d\n"
                                   ">> Total room: %d\n"
                                   ">> Enable: %d\n"
                                   ">> Disable: %d\n"
                                   ">> State: %d\n"
+                                  ">> Temperature at present: %d °C\n"
                                   "================================\n\n",
                                   ELEMENT [i].num, ELEMENT [i].totalThread, ELEMENT [i].enable,
-                                  ELEMENT [i].disable, ELEMENT [i].state);     
+                                  ELEMENT [i].disable, ELEMENT [i].state, ELEMENT [i].timeRandom);     
                 send (SOCK_SEND, Message, strlen(Message), 0);
                 FILE *file= fopen (FILE_NAME, "a+");
+
                 if (!file){
                     perror ("ERROR ");
                     return -1;
