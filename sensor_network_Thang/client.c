@@ -18,45 +18,40 @@
 #define PORT 2000
 int sock = 0;
 int valueOfShutdown;
+char Message[2000];
+char start[10];
 
 
-//================================================================
-// threading send to server
-void *SendMessage() {
-    while (1) {
-        char Message[2000];
-        printf("%s","> ");
-        gets(Message);
-        fflush(stdin);
-        send(sock, Message, strlen(Message), 0);
-        if(strcmp(Message,"EXIT")==0)
-            break;
-        memset(&Message, '\0', sizeof(Message));
-    }
+struct REQUEST {
+    int enable; 
+    int add;
+    int delete;
+    char nameRequest [100];
+} USER;
 
+void Init(){
+    USER.enable= 0;
+    USER.add = 0;
+    USER.delete =0;
 }
 
-//================================================================
-// threading recived from server
-void *ReceiveMessage() {
-    while (1) {
-        char ServerReply[2000];
-        recv(sock, ServerReply, sizeof(ServerReply),0);
-        puts(ServerReply);
-        if(strcmp(ServerReply,"EXIT")==0)
-            break;
-        memset(&ServerReply, '\0', sizeof(ServerReply));
+void CommandUser(){
+    memset(Message, '\0', sizeof(Message));
+    gets(Message);
+    fflush(stdin);
+    if (strcmp (Message, "1") != 0 && strcmp (Message,"0") != 0){
+        printf (">> Error command\n");
+    }
+    else{
+        send (sock, Message, strlen(Message), 0);
+        
     }
 }
 
-
-
-//===========================================================
 int main()
 {
-
+    Init();
     struct sockaddr_in serv_addr;
-    pthread_t send_thread, receive_thread;
     memset(&serv_addr, '0', sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(PORT);
@@ -75,16 +70,67 @@ int main()
        close(sock);
        return -1;
     }
-    pthread_create(&send_thread, NULL, SendMessage, NULL);
-    pthread_create(&receive_thread, NULL, ReceiveMessage, NULL);
-    pthread_join(receive_thread, NULL);
-    pthread_join(send_thread, NULL);
-    valueOfShutdown=shutdown(sock, SHUT_RDWR);
-    if(valueOfShutdown==0)
-        printf("Shutdown successful");
-    else
-        close(sock);
-    close(ValueConnect);
-    close(sock);
+    else {
+        printf (">> Connect server complete ! \n");
+    }
+
+    memset(start, '\0', sizeof(start));
+    while(1){
+        while (strcmp (start, "n")) {
+            char arrayString [500];
+            memset (USER.nameRequest, '\0', sizeof (USER.nameRequest));
+            sprintf ( arrayString, "\n>> Please input config: \n"
+                                    "1. Add a new room \n"
+                                    "2. Delete a room \n"
+                                    "3. Enable room's operate \n"
+                                    "4. EXIT\n"
+                                    "=========================\n");
+            puts (arrayString);
+            memset(Message, '\0', sizeof(Message));
+            printf("%s","> ");
+            gets(Message);
+            fflush(stdin);
+            int message= strtol (Message, 0, 10);
+            switch (message){
+                case 1:
+                    printf (">> Do you want to add a new room (0: no / 1: yes): ");
+                    strcpy (USER.nameRequest, "add");
+                    send (sock, USER.nameRequest, strlen (USER.nameRequest), 0);
+                    CommandUser();
+                    USER.add= strtol (Message, 0, 10);
+                    break;
+                case 2:
+                    printf (">> Do you want to delete a room (0: no / 1: yes): ");
+                    strcpy (USER.nameRequest, "delete");
+                    send (sock, USER.nameRequest, strlen (USER.nameRequest), 0);
+                    CommandUser();
+                    USER.delete= strtol (Message, 0, 10);
+
+                    break;   
+                case 3:
+                    printf (">> Do you want to enable room's operate (0: no / 1: yes): ");
+                    strcpy (USER.nameRequest, "enable");
+                    send (sock, USER.nameRequest, strlen (USER.nameRequest), 0);
+                    CommandUser();
+                    USER.enable= strtol (Message, 0, 10);
+                    break;   
+                case 4:
+                    printf (">> config complete! Do you want to config continue? (y/n):  ");
+                    gets(start);
+                    fflush(stdin);
+                    if (strcmp (start, "n")==0){
+                        printf(">> OK config successfully\n");
+                        puts (start);
+                        send (sock, start, strlen (start), 0);
+                    }
+                    exit (1);
+                    break;
+                default:
+                    printf (">> Error comand, please input again \n");
+                    break;                      
+           }
+        }
+    }
+    
     return 0;
 }
