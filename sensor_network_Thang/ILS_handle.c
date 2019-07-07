@@ -9,16 +9,19 @@
 
 #define PORT_USER 2000
 #define PORT_SEND 5678
+#define PORT_RECV 1234
 
 char buffer[100];
-struct sockaddr_in serv_addr, other;
+struct sockaddr_in serv_addr;
 socklen_t addrlen;
 int SOCK_USER;
 int SOCK_SEND;
+int SOCK_RECV;
 int acceptSend;
 int START_SEND= 0;
 fd_set LIST_USER;
 fd_set LIST_REQUEST;
+fd_set LIST_DATA;
 
 struct REQUEST {
     int addRoom;
@@ -116,7 +119,7 @@ void *SendData(){
         FD_SET (SOCK_SEND, &LIST_REQUEST);
         if (FD_ISSET (SOCK_SEND, &LIST_REQUEST)){      
 
-            acceptSend= accept (SOCK_SEND, (struct sockaddr*)&other, &addrlen);
+            acceptSend= accept (SOCK_SEND, (struct sockaddr*)&serv_addr, &addrlen);
             if (acceptSend < 0 ){
                 perror ("ACCEPT SEND ");
                 exit (1);
@@ -157,10 +160,40 @@ void *SendData(){
     }
 }
 
+void *RecvData(){
+    addrlen= sizeof(struct sockaddr_in);
+    int acceptRecv;
+    while(1){
+        
+        FD_ZERO (&LIST_DATA);
+        FD_SET (SOCK_RECV, &LIST_DATA);
+        select (SOCK_RECV + 1, &LIST_DATA, NULL, NULL, NULL);
+        if (FD_ISSET (SOCK_RECV, &LIST_DATA)){
+            
+            acceptRecv= accept (SOCK_RECV, (struct sockaddr *)&serv_addr, &addrlen);
+            if (acceptRecv < 0){
+                
+                perror ("Accept Recv");
+                exit (1);
+            }
+            else
+                printf (">> Ready recived data\n");
+            while(1){
+               
+                char arrayString [1024];
+                memset (arrayString, '\0', sizeof (arrayString));
+                recv (acceptRecv, arrayString, sizeof (arrayString), 0);
+                puts (arrayString);
+                
+            }
+        }
+    }    
+}
+
 int main(int argc, char *argv){
 
     InitConfig();
-    pthread_t threadUser, threadSend;
+    pthread_t threadUser, threadSend, threadRecv;
     memset (&serv_addr, '\0', sizeof(serv_addr));
     serv_addr.sin_family        = AF_INET;
     serv_addr.sin_addr.s_addr   = INADDR_ANY;
@@ -187,15 +220,32 @@ int main(int argc, char *argv){
         exit(1);
     }
 
-    if (listen (SOCK_USER, 2) <0){
+    if (listen (SOCK_USER, 5) <0){
         perror("listen accept ");
         exit(1);
     }
     
-    if (listen (SOCK_SEND, 2) <0){
+    if (listen (SOCK_SEND, 5) <0){
         perror("listen accept ");
         exit(1);
     }
+//=======================================port recv
+    serv_addr.sin_port          = htons (PORT_RECV);
+    SOCK_RECV= socket (AF_INET, SOCK_STREAM, 0);   
+    if (SOCK_RECV < 0){
+        perror("socket accept ");
+        exit(1);
+    }   
+    if (bind (SOCK_RECV, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0){
+        perror("bind accept ");
+        exit(1);
+    }
+
+    if (listen (SOCK_RECV, 5) <0){
+        perror("listen accept ");
+        exit(1);
+    }
+
 
 
 
@@ -203,6 +253,7 @@ int main(int argc, char *argv){
 
     pthread_create (&threadUser, NULL, ConnectUser, NULL);
     pthread_create (&threadSend, NULL, SendData, NULL);
+    pthread_create (&threadRecv, NULL, RecvData, NULL);
 
     while(1);
 
