@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 2.8.9)
+project(NetworkSensor)
+include_directories(lib)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
+file(GLOB_RECURSE SOURCES "src/*.c")
+add_executable(ILS ${SOURCES})
