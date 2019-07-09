@@ -10,6 +10,7 @@
 #define PORT_USER 2000
 #define PORT_SEND 5678
 #define PORT_RECV 1234
+#define FILE_NAME "write_config.txt"
 
 char buffer[100];
 struct sockaddr_in serv_addr;
@@ -150,6 +151,20 @@ void *ConnectUser(){
     }
 }
 
+
+void WriteFile(char message[100], int number){
+    FILE *fd= fopen( FILE_NAME, "w+");
+    time_t curtime;
+    time(&curtime);
+    if (!fd){
+        perror ("FILE");
+        exit (1);
+    }
+    fprintf (fd, "\n\nTIME: %s\n"
+                 " %s %d\n", ctime(&curtime), message, number);
+    fclose (fd);
+}
+
 void *SendData(){
     addrlen= sizeof(struct sockaddr_in);
     int acceptSend;    
@@ -195,7 +210,7 @@ void *SendData(){
                     ELEMENT.delRoom= -1;
                 }
 
-                
+
                 if (ELEMENT.disable == 1){
                     
                     char *enableRequest= "disable";
@@ -291,6 +306,7 @@ void *RecvData(){
         }
     }    
 }
+
 
 int main(int argc, char *argv){
 
