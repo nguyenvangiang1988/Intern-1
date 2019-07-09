@@ -7,192 +7,358 @@
 #include <pthread.h>
 #include <time.h>
 
-#define PORT_RECV 5678
-#define PORT_SEND 1234
-#define TIME_SEND 3
-#define MAXIMUM_USER 10
-#define FILE_NAME "LOC_GEN.txt"
+#define PORT_USER 2000
+#define PORT_SEND 5678
+#define PORT_RECV 1234
 
-int SOCK_SEND = 0;
-int SOCK_RECV = 0;
-fd_set EVEN;
-fd_set NEXT;
+char buffer[100];
+struct sockaddr_in serv_addr;
+socklen_t addrlen;
+int SOCK_USER;
+int SOCK_SEND;
+int SOCK_RECV;
+int acceptSend;
+int START_SEND= 0;
+fd_set LIST_USER;
+fd_set LIST_REQUEST;
+fd_set LIST_DATA;
 
-
-struct THREAD_SON {
-    int num;
-    int totalThread;
+struct REQUEST {
+    int addRoom;
+    int delete;
+    int delRoom;
     int disable;
-    int timeRandom;
+    int disRoom;
+    int enable;
+    int enRoom;
+} ELEMENT;
+
+void InitConfig(){
+    ELEMENT.addRoom    = 0;
+    ELEMENT.delete     = 0;
+    ELEMENT.disable    = 0;
+    ELEMENT.enable     = 0;
+    ELEMENT.delRoom    = -1;
+    ELEMENT.disRoom    = -1;
+    ELEMENT.enRoom     = -1;
     
-} ELEMENT [MAXIMUM_USER];
-
-
-
-void InitThreadSon(){
-    for (int i=0; i< MAXIMUM_USER; i++){
-        ELEMENT [i].num          = 0;
-        ELEMENT [i].totalThread  = 0;
-        ELEMENT [i].disable      = 0;
-        ELEMENT [i].timeRandom   = 0;
-    }
 }
 
-int CountRoom(){
-    int count= 0;
-    for (int i=0; i< MAXIMUM_USER; i++){
-        if (ELEMENT [i].num != 0){
-            count ++;
-        }
-    }
-    return count;
-}
+void *ConnectUser(){
+    int acceptUser;
 
-//================================================================
-// threading send to server
-void *SendMessage() {
-
-    while (1) {
-        int countSend =0;
-        int temp= 0;
-        for (int i=0; i< MAXIMUM_USER; i++){
-
-            ELEMENT [i].totalThread= CountRoom();
-            ELEMENT [i].timeRandom= 16 + rand() % 17;
-
-            if (ELEMENT [i].num !=0 && ELEMENT [i].disable == 0){
-                char Message[1000];  
-                srand (time(NULL));
-                sprintf (Message, ">> Number of room: %d\n"
-                                  ">> Total room: %d\n"
-                                  ">> Temperature at present: %d °C\n"
-                                  "================================\n\n",
-                                  ELEMENT [i].num, ELEMENT [i].totalThread, ELEMENT [i].timeRandom);     
-
-                printf ("%s", Message);
-                FILE *file= fopen (FILE_NAME, "a+");
-
-                if (!file){
-                    perror ("ERROR ");
-                    exit (1);
-                }
-                fputs (Message, file);
-                fclose (file);
-                char *sendTemperture;
-                sprintf (sendTemperture, "%d", ELEMENT [i].timeRandom);
-                send (SOCK_SEND, sendTemperture, strlen(sendTemperture), 0);
-                sleep(2);
-                countSend ++;
-            }
-        }
-        for (int i=0; i<MAXIMUM_USER; i++){
-            if (ELEMENT [i].num != 0){
-                temp ++;
-            }
-        }
-        if (countSend == temp && temp != 0){
-            char *notify= "All room is sended data";
-            send (SOCK_SEND, notify, strlen (notify), 0);
-            temp = 0;
-            countSend= 0;
-        }
-        sleep (TIME_SEND);
-    }
-
-}
-
-void *recvMessage(){
     while(1){
-        FD_ZERO (&EVEN);
-        FD_SET (SOCK_RECV, &EVEN);
-        select (SOCK_RECV + 1, &EVEN, NULL, NULL, NULL);
-        if (FD_ISSET (SOCK_RECV, &EVEN)){
-            char Message[1000];
-            memset(Message, '\0', sizeof(Message));
-            recv (SOCK_RECV, Message, sizeof(Message), 0);
-            puts(Message);
-            if (strcmp (Message, "add")==0){
-                for(int i=0; i< MAXIMUM_USER; i++){
-                    if (ELEMENT [i].num == 0){
-                        ELEMENT [i].num= i+1;
-                        break;
+
+        FD_ZERO (&LIST_USER);
+        FD_SET (SOCK_USER, &LIST_USER);
+        select (SOCK_USER +1, &LIST_USER, NULL, NULL, NULL);
+        if (FD_ISSET (SOCK_USER, &LIST_USER)){
+
+            addrlen= sizeof(struct sockaddr_in);
+            acceptUser= accept (SOCK_USER, (struct sockaddr*)&serv_addr, &addrlen);
+            FD_SET (acceptUser, &LIST_USER); 
+            if (acceptUser< 0){ 
+
+                perror("ACCEPT 1 ");
+                exit(1);
+            }  
+            printf(">> there is a USER connect\n");
+        }
+        memset (buffer, '\0', sizeof (buffer));
+        while(1){
+
+            select (acceptUser + 1, &LIST_USER, NULL, NULL, NULL);
+            if (FD_ISSET (acceptUser, &LIST_USER)){
+
+                memset (buffer, '\0', sizeof (buffer));
+                recv (acceptUser, buffer, sizeof (buffer), 0);
+                if (strcmp (buffer, "n")== 0){
+                    START_SEND= 1;
+                    break;
+                }
+                if (strcmp (buffer, "add") ==0){
+
+                    select (acceptUser + 1, &LIST_USER, NULL, NULL, NULL);
+                    if (FD_ISSET (acceptUser, &LIST_USER)){
+
+                        memset (buffer, '\0', sizeof (buffer));
+                        recv (acceptUser, buffer, sizeof (buffer), 0);
+                        ELEMENT.addRoom = strtol (buffer, 0, 10);
+                        ELEMENT.delete= 0;
+                    } 
+                }
+                if (strcmp (buffer, "delete") ==0){
+
+                    select (acceptUser + 1, &LIST_USER, NULL, NULL, NULL);
+                    if (FD_ISSET (acceptUser, &LIST_USER)){
+
+                        memset (buffer, '\0', sizeof (buffer));
+                        recv (acceptUser, buffer, sizeof (buffer), 0);
+                        ELEMENT.delete = strtol (buffer, 0, 10);
+                        select (acceptUser + 1, &LIST_USER, NULL, NULL, NULL);
+                        if (FD_ISSET (acceptUser, &LIST_USER)){
+
+                            memset (buffer, '\0', sizeof (buffer));
+                            recv (acceptUser, buffer, sizeof (buffer), 0);
+                            ELEMENT.delRoom = strtol (buffer, 0, 10);
+                        } 
+                        ELEMENT.addRoom= 0;
+                    } 
+                }
+                if (strcmp (buffer, "disable") ==0){
+
+                    select (acceptUser + 1, &LIST_USER, NULL, NULL, NULL);
+                    if (FD_ISSET (acceptUser, &LIST_USER)){
+
+                        memset (buffer, '\0', sizeof (buffer));
+                        recv (acceptUser, buffer, sizeof (buffer), 0);
+                        ELEMENT.disable = strtol (buffer, 0, 10);
+                        printf ("recv flag dis int : %d\n", ELEMENT.disable);
+                        select (acceptUser + 1, &LIST_USER, NULL, NULL, NULL);
+                        if (FD_ISSET (acceptUser, &LIST_USER)){
+
+                            memset (buffer, '\0', sizeof (buffer));
+                            recv (acceptUser, buffer, sizeof (buffer), 0);
+                            ELEMENT.disRoom = strtol (buffer, 0, 10);
+                            printf ("recv room num int : %d\n", ELEMENT.disRoom);
+                        }
+                    } 
+                }
+                if (strcmp (buffer, "enable") ==0){
+
+                    select (acceptUser + 1, &LIST_USER, NULL, NULL, NULL);
+                    if (FD_ISSET (acceptUser, &LIST_USER)){
+
+                        memset (buffer, '\0', sizeof (buffer));
+                        recv (acceptUser, buffer, sizeof (buffer), 0);
+                        ELEMENT.enable = strtol (buffer, 0, 10);
+                        printf ("recv flag dis int : %d\n", ELEMENT.disable);
+                        select (acceptUser + 1, &LIST_USER, NULL, NULL, NULL);
+                        if (FD_ISSET (acceptUser, &LIST_USER)){
+
+                            memset (buffer, '\0', sizeof (buffer));
+                            recv (acceptUser, buffer, sizeof (buffer), 0);
+                            ELEMENT.enRoom = strtol (buffer, 0, 10);
+                            printf ("recv room num int : %d\n", ELEMENT.enRoom);
+                        }
+                    } 
+                }
+
+            }
+        }
+
+    }
+}
+
+void *SendData(){
+    addrlen= sizeof(struct sockaddr_in);
+    int acceptSend;    
+    while(1){
+
+        FD_ZERO (&LIST_REQUEST);
+        FD_SET (SOCK_SEND, &LIST_REQUEST);
+        if (FD_ISSET (SOCK_SEND, &LIST_REQUEST)){      
+
+            acceptSend= accept (SOCK_SEND, (struct sockaddr*)&serv_addr, &addrlen);
+            if (acceptSend < 0 ){
+                perror ("ACCEPT SEND ");
+                exit (1);
+            }
+
+            else{
+                printf (">> Thread program is connected\n");
+            }
+
+        }
+        while(1){
+
+            if (START_SEND == 1){
+
+                printf ("start send\n");
+                if (ELEMENT.addRoom == 1){
+
+                    char *addRequest= "add";
+                    send (acceptSend, addRequest, strlen (addRequest), 0);
+                    ELEMENT.addRoom = 0; 
+                }
+                if (ELEMENT.delete == 1){
+                    
+                    char *delRequest= "delete";
+                    send (acceptSend, delRequest, strlen (delRequest), 0);
+                    ELEMENT.delete = 0; 
+                }               
+                if (ELEMENT.delRoom > 0){
+
+                    char del[5];
+                    sprintf (del, "%d", ELEMENT.delRoom);
+                    send (acceptSend, del, strlen (del), 0);
+                    ELEMENT.delRoom= -1;
+                }
+
+                
+                if (ELEMENT.disable == 1){
+                    
+                    char *enableRequest= "disable";
+                    send (acceptSend, enableRequest, strlen (enableRequest), 0);
+                    printf ("send name request str: %s\n", enableRequest);
+                    ELEMENT.disable = 0; 
+                }
+                if (ELEMENT.disRoom > 0){
+
+                    char dis[5];
+                    sprintf (dis, "%d", ELEMENT.disRoom);
+                    send (acceptSend, dis, strlen (dis), 0);
+                    printf ("send num room want to dis string: %s\n", dis );
+                    ELEMENT.disRoom= -  1;
+                }
+                if (ELEMENT.enable == 1){
+                    
+                    char *enableRequest= "enable";
+                    send (acceptSend, enableRequest, strlen (enableRequest), 0);
+                    printf ("send name request str: %s\n", enableRequest);
+                    ELEMENT.disable = 0; 
+                }
+                if (ELEMENT.enRoom > 0){
+
+                    char en[5];
+                    sprintf (en, "%d", ELEMENT.enRoom);
+                    send (acceptSend, en, strlen (en), 0);
+                    printf ("send num room want to en string: %s\n", en );
+                    ELEMENT.enRoom= -  1;
+                }
+
+                perror ("send");
+                START_SEND= 0;
+            }
+        }
+    }
+}
+
+void *RecvData(){
+    addrlen= sizeof(struct sockaddr_in);
+    int acceptRecv;
+    while(1){
+        
+        FD_ZERO (&LIST_DATA);
+        FD_SET (SOCK_RECV, &LIST_DATA);
+        select (SOCK_RECV + 1, &LIST_DATA, NULL, NULL, NULL);
+        if (FD_ISSET (SOCK_RECV, &LIST_DATA)){
+            
+            acceptRecv= accept (SOCK_RECV, (struct sockaddr *)&serv_addr, &addrlen);
+            if (acceptRecv < 0){
+                
+                perror ("Accept Recv");
+                exit (1);
+            }
+            else
+                printf (">> Ready recived data\n");
+                FD_SET (acceptRecv, &LIST_DATA);
+            while(1){
+               
+                int arrayList [10];
+                int count= 0, sum= 0;
+                int countSum= 0;
+                char arrayString [1024];
+                memset (arrayList, 0, sizeof (arrayList));
+                while(1){
+                    select (acceptRecv + 1, &LIST_DATA, NULL, NULL, NULL);
+                    if (FD_ISSET (acceptRecv, &LIST_DATA)){
+                        memset (arrayString, '\0', sizeof (arrayString));
+                        recv (acceptRecv, arrayString, sizeof (arrayString), 0);
+
+                        if (strcmp (arrayString, "All room is sended data")==0){
+                            
+                            for (int i=0; i< 10; i++){
+                                if (arrayList[i] != 0){
+                                    sum += arrayList[i];
+                                    countSum ++;
+                                }
+                            }
+                            int sumTB= sum/countSum;
+                            printf (">> SUM TB= %d\n", sumTB);
+                            printf ("reset ok\n\n");          
+                            break;
+                        }
+                        else{
+                            arrayList [count]= strtol (arrayString, 0, 10);
+                            printf ("array list %d: %d\n", count, arrayList [count]);
+                            count ++;
+                        }
                     }
                 }
-            }
-            if ( strcmp (Message, "delete") == 0){
-                select (SOCK_RECV + 1, &EVEN, NULL, NULL, NULL);
-                if (FD_ISSET (SOCK_RECV, &EVEN)){
-                    memset(Message, '\0', sizeof(Message));
-                    recv (SOCK_RECV, Message, sizeof(Message), 0);
-                    int del= strtol (Message, 0, 10);
-                    ELEMENT [del-1].num= 0;
-
-                }
-            }
-            if ( strcmp (Message, "disable") == 0){
-                select (SOCK_RECV + 1, &EVEN, NULL, NULL, NULL);
-                if (FD_ISSET (SOCK_RECV, &EVEN)){
-                    memset(Message, '\0', sizeof(Message));
-                    recv (SOCK_RECV, Message, sizeof(Message), 0);
-                    int x= strtol (Message, 0, 10);
-                    ELEMENT [x-1].disable= 1;
-
-                }
-            }
-            if ( strcmp (Message, "enable") == 0){
-                select (SOCK_RECV + 1, &EVEN, NULL, NULL, NULL);
-                if (FD_ISSET (SOCK_RECV, &EVEN)){
-                    memset(Message, '\0', sizeof(Message));
-                    recv (SOCK_RECV, Message, sizeof(Message), 0);
-                    int x= strtol (Message, 0, 10);
-                    ELEMENT [x-1].disable= 0;
-
-                }
+                
             }
         }
-    }
+    }    
 }
 
-int main()
-{
-    InitThreadSon();
-    struct sockaddr_in serv_addr;
-    pthread_t send_thread, receive_thread;
-    memset(&serv_addr, '\0', sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT_RECV);
+int main(int argc, char *argv){
+
+    InitConfig();
+    pthread_t threadUser, threadSend, threadRecv;
+    memset (&serv_addr, '\0', sizeof(serv_addr));
+    serv_addr.sin_family        = AF_INET;
     serv_addr.sin_addr.s_addr   = INADDR_ANY;
 
-    if ((SOCK_RECV = socket (AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        perror("sock");
+    serv_addr.sin_port          = htons (PORT_USER);
+    SOCK_USER= socket (AF_INET, SOCK_STREAM, 0);   
+    if (SOCK_USER < 0){
+        perror("socket accept ");
+        exit(1);
+    }   
+    if (bind (SOCK_USER, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0){
+        perror("bind accept ");
         exit(1);
     }
-    int connectRecv= connect (SOCK_RECV, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    if ( connectRecv < 0)
-    {
-       perror("connect");
-       exit(1);
-    }
-//=======================================================port 2
-    serv_addr.sin_port = htons(PORT_SEND);    
-    if ((SOCK_SEND = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        perror("sock");
+///=====================================port send
+    serv_addr.sin_port          = htons (PORT_SEND);
+    SOCK_SEND= socket (AF_INET, SOCK_STREAM, 0);   
+    if (SOCK_SEND < 0){
+        perror("socket accept ");
+        exit(1);
+    }   
+    if (bind (SOCK_SEND, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0){
+        perror("bind accept ");
         exit(1);
     }
-    int connectSend= connect(SOCK_SEND, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    if ( connectSend < 0)
-    {
-       perror("connect");
-       exit(1);
+
+    if (listen (SOCK_USER, 5) <0){
+        perror("listen accept ");
+        exit(1);
     }
-    FD_ZERO (&NEXT);
-    FD_SET (connectSend, &NEXT);
+    
+    if (listen (SOCK_SEND, 5) <0){
+        perror("listen accept ");
+        exit(1);
+    }
+//=======================================port recv
+    serv_addr.sin_port          = htons (PORT_RECV);
+    SOCK_RECV= socket (AF_INET, SOCK_STREAM, 0);   
+    if (SOCK_RECV < 0){
+        perror("socket accept ");
+        exit(1);
+    }   
+    if (bind (SOCK_RECV, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0){
+        perror("bind accept ");
+        exit(1);
+    }
 
-    pthread_create(&send_thread, NULL, SendMessage, NULL);
-    pthread_create(&receive_thread, NULL, recvMessage, NULL);
+    if (listen (SOCK_RECV, 5) <0){
+        perror("listen accept ");
+        exit(1);
+    }
 
-    while(1){};
+
+
+
+//================================================================================
+
+    pthread_create (&threadUser, NULL, ConnectUser, NULL);
+    pthread_create (&threadSend, NULL, SendData, NULL);
+    pthread_create (&threadRecv, NULL, RecvData, NULL);
+
+    while(1);
+
+
     return 0;
 }
