@@ -23,16 +23,18 @@ char start[10];
 
 
 struct REQUEST {
-    int enable; 
+    int disable; 
     int add;
     int delete;
+    int enable;
     char nameRequest [100];
 } USER;
 
 void Init(){
-    USER.enable= 0;
+    USER.disable= 0;
     USER.add = 0;
     USER.delete =0;
+    USER.enable =0;
 }
 
 void CommandUser(){
@@ -44,6 +46,7 @@ void CommandUser(){
     }
     else{
         send (sock, Message, strlen(Message), 0);
+        printf ("ok: %s\n", Message);
         
     }
 }
@@ -82,8 +85,9 @@ int main()
             sprintf ( arrayString, "\n>> Please input config: \n"
                                     "1. Add a new room \n"
                                     "2. Delete a room \n"
-                                    "3. Enable room's operate \n"
-                                    "4. EXIT\n"
+                                    "3. Disable room's operate \n"
+                                    "4. Enable room's operate\n"
+                                    "5. EXIT\n"
                                     "=========================\n");
             puts (arrayString);
             memset(Message, '\0', sizeof(Message));
@@ -104,17 +108,47 @@ int main()
                     strcpy (USER.nameRequest, "delete");
                     send (sock, USER.nameRequest, strlen (USER.nameRequest), 0);
                     CommandUser();
+
+                    printf (">> Input room's number which want to delete: ");
+                    char delRoom [10];
+                    gets (delRoom);
+                    fflush(stdin);
+                    send (sock, delRoom, strlen (delRoom), 0);
+                    
                     USER.delete= strtol (Message, 0, 10);
 
                     break;   
                 case 3:
+                    printf (">> Do you want to disable room's operate (0: no / 1: yes): ");
+                    strcpy (USER.nameRequest, "disable");
+                    send (sock, USER.nameRequest, strlen (USER.nameRequest), 0);
+                    printf ("send: %s\n", USER.nameRequest);
+                    CommandUser();
+
+                    printf (">> choice room want to disable send data: ");
+                    char disableRoom [10];
+                    gets (disableRoom);
+                    fflush(stdin);
+                    send (sock, disableRoom, strlen (disableRoom), 0);
+                    printf ("dis room: %s\n", disableRoom);
+                    USER.disable= strtol (Message, 0, 10);
+                    break;   
+               case 4:
                     printf (">> Do you want to enable room's operate (0: no / 1: yes): ");
                     strcpy (USER.nameRequest, "enable");
                     send (sock, USER.nameRequest, strlen (USER.nameRequest), 0);
+                    printf ("send: %s\n", USER.nameRequest);
                     CommandUser();
+
+                    printf (">> choice room want to enale send data: ");
+                    char enableRoom [10];
+                    gets (enableRoom);
+                    fflush(stdin);
+                    send (sock, enableRoom, strlen (enableRoom), 0);
+                    printf ("en room: %s\n", enableRoom);
                     USER.enable= strtol (Message, 0, 10);
-                    break;   
-                case 4:
+                    break; 
+                case 5:
                     printf (">> config complete! Do you want to config continue? (y/n):  ");
                     gets(start);
                     fflush(stdin);
