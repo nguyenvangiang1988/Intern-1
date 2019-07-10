@@ -1,0 +1,13 @@
+>> Work completed
+
+1. Program Client: connecting with ISL program for sending request from client such as: add room, delete room, enable room, disable room. Each request only config 1 time then choice number 5 to exit program.
+2. Program ISL: accepting connect from client and sending request to LOC_GEN program with port num: 5678, besides reciving data from LOC_GEN program with port num: 1234. 
+3. Program LOC_GEN: reciving request and handing some function such as: add room, delete room, enable room, disable room. Manager room's status and send data to ISL program, save data in file txt.
+
+>> Work not completed
+    
+    
+1. function disable is display error.
+2. Not saved data config in ISL program.
+3. Not format code again so it can difficult for reader
+    
